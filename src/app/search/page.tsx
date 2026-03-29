@@ -16,19 +16,49 @@ export default function SearchPage() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    if (!query) { setResults([]); setLoading(false); return }
-    let c = false
+    if (!query.trim()) { setResults([]); setLoading(false); return }
+    let cancelled = false
     async function search() {
       setLoading(true)
-      let q = supabase.from('series').select('*, profiles!series_author_id_fkey(display_name, handle, avatar_url)')
-        .or(`title.ilike.%${query}%,description.ilike.%${query}%`).order('total_views', { ascending: false }).limit(50)
+      // Search by title (ilike handles per-word matching), genres array, tags array, and description
+      const searchTerm = `%${query.trim()}%`
+      let q = supabase.from('series')
+        .select('*, profiles!series_author_id_fkey(display_name, handle, avatar_url)')
+        .or(`title.ilike.${searchTerm},description.ilike.${searchTerm}`)
+        .order('total_views', { ascending: false })
+        .limit(50)
       if (genreFilter !== 'All') q = q.contains('genres', [genreFilter])
       if (formatFilter !== 'All') q = q.eq('format', formatFilter)
       const { data } = await q
-      if (!c) { setResults(data ?? []); setLoading(false) }
+
+      // Also search by genre/tag match if title/desc didn't catch it
+      let extraResults: any[] = []
+      if (data && data.length < 10) {
+        const { data: genreMatch } = await supabase.from('series')
+          .select('*, profiles!series_author_id_fkey(display_name, handle, avatar_url)')
+          .contains('genres', [query.trim()])
+          .order('total_views', { ascending: false }).limit(20)
+        const { data: tagMatch } = await supabase.from('series')
+          .select('*, profiles!series_author_id_fkey(display_name, handle, avatar_url)')
+          .contains('tags', [query.trim()])
+          .order('total_views', { ascending: false }).limit(20)
+        const existingIds = new Set((data ?? []).map((s: any) => s.id))
+        extraResults = [...(genreMatch ?? []), ...(tagMatch ?? [])].filter(s => !existingIds.has(s.id))
+      }
+
+      if (!cancelled) {
+        // Deduplicate
+        const seen = new Set<string>()
+        const all = [...(data ?? []), ...extraResults].filter(s => {
+          if (seen.has(s.id)) return false
+          seen.add(s.id); return true
+        })
+        setResults(all)
+        setLoading(false)
+      }
     }
     search()
-    return () => { c = true }
+    return () => { cancelled = true }
   }, [query, genreFilter, formatFilter, supabase])
 
   const PillGroup = ({ label, options, value, onChange }: any) => (

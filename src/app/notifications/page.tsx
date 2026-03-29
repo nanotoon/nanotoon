@@ -24,7 +24,7 @@ export default function NotificationsPage() {
     let c = false
     supabase.from('notifications').select('*, actor:profiles!notifications_actor_id_fkey(display_name, handle, avatar_url)')
       .eq('user_id', user.id).order('created_at', { ascending: false }).limit(50)
-      .then(({ data }) => { if (!c) { setNotifs(data ?? []); setLoading(false) } })
+      .then(({ data }: any) => { if (!c) { setNotifs(data ?? []); setLoading(false) } })
     return () => { c = true }
   }, [user, supabase])
 

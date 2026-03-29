@@ -29,14 +29,14 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
   useEffect(() => {
     if (!user) return
     supabase.from('series').select('*').eq('author_id', user.id).order('created_at', { ascending: false })
-      .then(({ data }) => setMySeries(data ?? []))
+      .then(({ data }: any) => setMySeries(data ?? []))
   }, [user, supabase])
 
   useEffect(() => {
     if (!selectedSeriesId) return
     supabase.from('chapters').select('chapter_number').eq('series_id', selectedSeriesId)
       .order('chapter_number', { ascending: false }).limit(1)
-      .then(({ data }) => setChapterNumber(data && data.length > 0 ? data[0].chapter_number + 1 : 1))
+      .then(({ data }: any) => setChapterNumber(data && data.length > 0 ? data[0].chapter_number + 1 : 1))
   }, [selectedSeriesId, supabase])
 
   // Different validation for new vs existing
@@ -186,11 +186,11 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
               </div>
               {mode === 'new' && (
                 <div className="border-t border-[#27272a] pt-3">
-                  <label className="block text-xs text-[#71717a] mb-1.5">Genres</label>
+                  <label className="block text-xs text-[#71717a] mb-1.5">Genres <span className="text-[#52525b]">(max 3)</span></label>
                   <div className="flex gap-1 flex-wrap mb-3">
                     {GENRES_ALL.map(g => (
-                      <button key={g} onClick={() => { const n = new Set(genres); if (n.has(g)) n.delete(g); else n.add(g); setGenres(n) }}
-                        className={`px-2.5 py-1 rounded-full text-[0.73rem] cursor-pointer border ${genres.has(g) ? 'border-[#a855f7] text-[#c084fc] bg-purple-500/10' : 'border-[#3f3f46] text-[#71717a] bg-transparent'}`}>{g}</button>
+                      <button key={g} onClick={() => { const n = new Set(genres); if (n.has(g)) n.delete(g); else if (n.size < 3) n.add(g); else return; setGenres(n) }}
+                        className={`px-2.5 py-1 rounded-full text-[0.73rem] cursor-pointer border ${genres.has(g) ? 'border-[#a855f7] text-[#c084fc] bg-purple-500/10' : genres.size >= 3 ? 'border-[#27272a] text-[#3f3f46] bg-transparent cursor-not-allowed' : 'border-[#3f3f46] text-[#71717a] bg-transparent'}`}>{g}</button>
                     ))}
                   </div>
                   <label className="block text-xs text-[#71717a] mb-1">Description</label>

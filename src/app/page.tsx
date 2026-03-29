@@ -51,7 +51,7 @@ export default function HomePage() {
     return () => { cancelled = true }
   }, [formatFilter, latestLimit, supabase])
 
-  const timePills = ['Today','This Week','This Month','This Year','All Time']
+  const timePills = ['Today','Week','Month','Year','All Time']
   if (!mounted) return <div className="min-h-screen" />
 
   return (

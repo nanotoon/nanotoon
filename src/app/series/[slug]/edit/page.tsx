@@ -284,11 +284,11 @@ export default function EditSeriesPage() {
           </div>
         </div>
         <div>
-          <label className="block text-xs text-[#71717a] mb-1.5">Genres</label>
+          <label className="block text-xs text-[#71717a] mb-1.5">Genres <span className="text-[#52525b]">(max 3)</span></label>
           <div className="flex gap-1 flex-wrap">
             {GENRES_ALL.map(g => (
-              <button key={g} onClick={() => { const n = new Set(genres); if (n.has(g)) n.delete(g); else n.add(g); setGenres(n) }}
-                className={`px-2.5 py-1 rounded-full text-[0.73rem] cursor-pointer border transition-all ${genres.has(g) ? 'border-[#a855f7] text-[#c084fc] bg-purple-500/10' : 'border-[#3f3f46] text-[#71717a] bg-transparent'}`}>{g}</button>
+              <button key={g} onClick={() => { const n = new Set(genres); if (n.has(g)) n.delete(g); else if (n.size < 3) n.add(g); else return; setGenres(n) }}
+                className={`px-2.5 py-1 rounded-full text-[0.73rem] cursor-pointer border transition-all ${genres.has(g) ? 'border-[#a855f7] text-[#c084fc] bg-purple-500/10' : genres.size >= 3 ? 'border-[#27272a] text-[#3f3f46] bg-transparent cursor-not-allowed' : 'border-[#3f3f46] text-[#71717a] bg-transparent'}`}>{g}</button>
             ))}
           </div>
         </div>

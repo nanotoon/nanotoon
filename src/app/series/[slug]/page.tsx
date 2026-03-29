@@ -32,6 +32,7 @@ export default function ReaderPage() {
   const [chapterViews, setChapterViews] = useState(0)
   const [liked, setLiked] = useState(false)
   const [favorited, setFavorited] = useState(false)
+  const [isFollowing, setIsFollowing] = useState(false)
   const [showChapters, setShowChapters] = useState(false)
   const [showShare, setShowShare] = useState<any>(null)
   const [showReport, setShowReport] = useState<string | null>(null)
@@ -61,11 +62,12 @@ export default function ReaderPage() {
         const { data: sc } = await supabase.from('comments').select('*, profiles(display_name, handle, avatar_url)').eq('series_id', s.id).is('chapter_id', null).order('created_at', { ascending: false })
         if (!c) setSeriesComments(sc ?? [])
         if (user) {
-          const [lk, fv] = await Promise.all([
+          const [lk, fv, fw] = await Promise.all([
             supabase.from('likes').select('*').eq('user_id', user.id).eq('series_id', s.id).maybeSingle(),
             supabase.from('favorites').select('*').eq('user_id', user.id).eq('series_id', s.id).maybeSingle(),
+            supabase.from('follows').select('*').eq('follower_id', user.id).eq('following_id', s.author_id).maybeSingle(),
           ])
-          if (!c) { setLiked(!!lk.data); setFavorited(!!fv.data) }
+          if (!c) { setLiked(!!lk.data); setFavorited(!!fv.data); setIsFollowing(!!fw.data) }
         }
         if (!viewIncremented.current) {
           viewIncremented.current = true
@@ -85,7 +87,7 @@ export default function ReaderPage() {
     if (!ch) return
     setChapterViews(ch.views ?? 0)
     supabase.from('comments').select('*, profiles(display_name, handle, avatar_url)').eq('chapter_id', ch.id).order('created_at', { ascending: false })
-      .then(({ data }) => setComments(data ?? []))
+      .then(({ data }: any) => setComments(data ?? []))
     supabase.from('chapters').update({ views: (ch.views ?? 0) + 1 }).eq('id', ch.id).then(() => {
       setChapterViews(v => v + 1)
       setChapters(prev => prev.map(c => c.id === ch.id ? { ...c, views: (c.views ?? 0) + 1 } : c))
@@ -111,6 +113,18 @@ export default function ReaderPage() {
       await supabase.from('favorites').delete().eq('user_id', user.id).eq('series_id', series.id); setFavorited(false); show('Removed from Favorites')
     } else {
       await supabase.from('favorites').insert({ user_id: user.id, series_id: series.id }); setFavorited(true); show('Added to Favorites!')
+    }
+  }
+
+  async function toggleFollow() {
+    if (!user || !series) { show('Sign in to follow!'); return }
+    if (user.id === series.author_id) { show("Can't follow yourself"); return }
+    if (isFollowing) {
+      await supabase.from('follows').delete().eq('follower_id', user.id).eq('following_id', series.author_id)
+      setIsFollowing(false); show('Unfollowed')
+    } else {
+      await supabase.from('follows').insert({ follower_id: user.id, following_id: series.author_id })
+      setIsFollowing(true); show('Following!')
     }
   }
 
@@ -240,18 +254,24 @@ export default function ReaderPage() {
               </span>}
             </div>
           </div>
-          <div className="flex flex-row md:flex-col gap-2 md:gap-1.5 text-xs shrink-0 flex-wrap">
-            <button onClick={toggleLike} className={`flex items-center gap-1 bg-transparent border-none cursor-pointer text-xs ${liked ? 'text-[#f87171]' : 'text-[#a1a1aa]'}`}>
-              <svg width="10" height="10" viewBox="0 0 24 24" fill={liked ? '#f87171' : 'none'} stroke="currentColor" strokeWidth="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
-              {fmtNum(series.total_likes)}
+          <div className="flex flex-col gap-1.5 text-xs shrink-0">
+            {/* Like - prominent */}
+            <button onClick={toggleLike} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border cursor-pointer text-sm font-medium transition-all ${liked ? 'bg-red-500/15 border-red-500/40 text-[#f87171]' : 'bg-transparent border-[#3f3f46] text-[#a1a1aa] hover:border-red-500/40'}`}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill={liked ? '#f87171' : 'none'} stroke="currentColor" strokeWidth="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+              {fmtNum(series.total_likes)} {liked ? 'Liked' : 'Like'}
             </button>
-            <button onClick={toggleFav} className={`flex items-center gap-1 bg-transparent border-none cursor-pointer text-xs ${favorited ? 'text-[#fbbf24]' : 'text-[#a1a1aa]'}`}>
+            {/* Follow - prominent */}
+            <button onClick={toggleFollow} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border cursor-pointer text-sm font-medium transition-all ${isFollowing ? 'bg-purple-500/15 border-purple-500/40 text-[#c084fc]' : 'bg-[#7c3aed] border-[#7c3aed] text-white hover:bg-[#6d28d9]'}`}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
+              {isFollowing ? 'Following' : 'Follow'}
+            </button>
+            <button onClick={toggleFav} className={`flex items-center gap-1 px-2 py-1 rounded-lg border cursor-pointer text-xs transition-all ${favorited ? 'border-yellow-500/40 text-[#fbbf24]' : 'border-[#3f3f46] text-[#a1a1aa] hover:border-yellow-500/40'}`}>
               <svg width="10" height="10" viewBox="0 0 24 24" fill={favorited ? '#fbbf24' : 'none'} stroke="currentColor" strokeWidth="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
               {favorited ? 'Favorited' : 'Favorite'}
             </button>
             <button onClick={() => setShowShare({ title: `${series.title} on NANOTOON`, url: `${typeof window !== 'undefined' ? window.location.origin : ''}/series/${series.slug}` })}
-              className="flex items-center gap-1 bg-transparent border-none cursor-pointer text-xs text-[#a1a1aa]">Share</button>
-            <button onClick={() => setShowSeriesComments(true)} className="flex items-center gap-1 bg-transparent border-none cursor-pointer text-xs text-[#c084fc]">Comments</button>
+              className="flex items-center gap-1 px-2 py-1 rounded-lg border border-[#3f3f46] cursor-pointer text-xs text-[#a1a1aa] hover:border-[#a855f7]">Share</button>
+            <button onClick={() => setShowSeriesComments(true)} className="flex items-center gap-1 px-2 py-1 rounded-lg border border-[#3f3f46] cursor-pointer text-xs text-[#c084fc] hover:border-[#a855f7]">Comments</button>
           </div>
         </div>
         {maxCh > 0 && (

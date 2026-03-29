@@ -16,7 +16,7 @@ export default function FollowersPage() {
     let c = false
     supabase.from('follows').select('*, profiles!follows_follower_id_fkey(id, display_name, handle, avatar_url)')
       .eq('following_id', user.id).order('created_at', { ascending: false })
-      .then(({ data }) => { if (!c) { setFollowers(data ?? []); setLoading(false) } })
+      .then(({ data }: any) => { if (!c) { setFollowers(data ?? []); setLoading(false) } })
     return () => { c = true }
   }, [user, supabase])
 
