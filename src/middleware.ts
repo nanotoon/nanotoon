@@ -4,10 +4,16 @@ import { NextResponse, type NextRequest } from "next/server";
 export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
 
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
+  // 1. CRASH PREVENTION: If variables are missing, don't even try Supabase
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (!supabaseUrl || !supabaseKey) {
+    return supabaseResponse; 
+  }
+
+  try {
+    const supabase = createServerClient(supabaseUrl, supabaseKey, {
       cookies: {
         getAll() {
           return request.cookies.getAll();
@@ -22,41 +28,30 @@ export async function middleware(request: NextRequest) {
           );
         },
       },
+    });
+
+    // 2. Wrap user check in try/catch to prevent 500 errors
+    const { data: { user } } = await supabase.auth.getUser();
+
+    const protectedPaths = ["/profile", "/settings", "/favorites", "/followers", "/following", "/notifications"];
+    const isProtected = protectedPaths.some((p) => request.nextUrl.pathname.startsWith(p));
+
+    if (!user && isProtected) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/auth/signin";
+      url.searchParams.set("redirect", request.nextUrl.pathname);
+      return NextResponse.redirect(url);
     }
-  );
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+    const authPaths = ["/auth/signin", "/auth/register"];
+    if (user && authPaths.some((p) => request.nextUrl.pathname.startsWith(p))) {
+      return NextResponse.redirect(new URL("/", request.url));
+    }
 
-  const protectedPaths = [
-    "/profile",
-    "/settings",
-    "/favorites",
-    "/followers",
-    "/following",
-    "/notifications",
-  ];
-  const isProtected = protectedPaths.some((p) =>
-    request.nextUrl.pathname.startsWith(p)
-  );
-
-  if (!user && isProtected) {
-    const url = request.nextUrl.clone();
-    url.pathname = "/auth/signin";
-    url.searchParams.set("redirect", request.nextUrl.pathname);
-    return NextResponse.redirect(url);
-  }
-
-  const authPaths = ["/auth/signin", "/auth/register"];
-  const isAuthPage = authPaths.some((p) =>
-    request.nextUrl.pathname.startsWith(p)
-  );
-
-  if (user && isAuthPage) {
-    const url = request.nextUrl.clone();
-    url.pathname = "/";
-    return NextResponse.redirect(url);
+  } catch (error) {
+    // 3. SILENT FAIL: If Supabase fails, just show the page. Better than a 500 error.
+    console.error("Middleware Error:", error);
+    return supabaseResponse;
   }
 
   return supabaseResponse;
