@@ -1,12 +1,8 @@
 name = "nanotoon"
-main = ".open-next/worker.js"
+pages_build_output_dir = ".open-next/assets"
 compatibility_date = "2024-09-23"
 compatibility_flags = ["nodejs_compat"]
 
 [vars]
 NEXT_PUBLIC_SUPABASE_URL = "https://hzixbycndfjqxtmgjlyd.supabase.co"
 NEXT_PUBLIC_SUPABASE_ANON_KEY = "sb_publishable_oI1NcKqMpaH-maqxkvZDqw_tpMmYFgP"
-
-[assets]
-directory = ".open-next/assets"
-binding = "ASSETS"
