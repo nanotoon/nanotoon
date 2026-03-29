@@ -1,12 +1,13 @@
 'use client'
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { SeriesCard } from '@/components/SeriesCard'
 import { useToast } from '@/components/Toast'
 import { createClient } from '@/lib/supabase/client'
 import Link from 'next/link'
 
-export default function BrowsePage() {
+// --- 1. Everything stays exactly the same in this component ---
+function BrowseContent() {
   const { show } = useToast()
   const supabase = useMemo(() => createClient(), [])
   const searchParams = useSearchParams()
@@ -54,5 +55,14 @@ export default function BrowsePage() {
           className="px-7 py-2.5 border border-[#3f3f46] rounded-xl bg-transparent text-[#a1a1aa] cursor-pointer text-sm hover:border-[#a855f7] hover:text-[#c084fc]">View More</button>
       </div>}
     </div>
+  )
+}
+
+// --- 2. This wrapper just lets Cloudflare build the page ---
+export default function BrowsePage() {
+  return (
+    <Suspense fallback={<p className="text-center py-12 text-[#52525b] text-sm">Loading...</p>}>
+      <BrowseContent />
+    </Suspense>
   )
 }
