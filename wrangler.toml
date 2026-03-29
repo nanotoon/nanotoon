@@ -2,3 +2,7 @@ name = "nanotoon"
 compatibility_date = "2025-03-01"
 compatibility_flags = ["nodejs_compat"]
 pages_build_output_dir = ".open-next/assets"
+
+[vars]
+NEXT_PUBLIC_SUPABASE_URL = "https://hzixbycndfjqxtmgjlyd.supabase.co"
+NEXT_PUBLIC_SUPABASE_ANON_KEY = "sb_publishable_oI1NcKqMpaH-maqxkvZDqw_tpMmYFgP"
