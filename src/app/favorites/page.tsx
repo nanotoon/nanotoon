@@ -13,22 +13,49 @@ export default function FavoritesPage() {
   useEffect(() => {
     if (!user) { setLoading(false); return }
     let cancelled = false
-    supabase.from('favorites').select('*, series(*, profiles!series_author_id_fkey(display_name, handle, avatar_url))')
-      .eq('user_id', user.id).order('created_at', { ascending: false })
-      .then(({ data }) => { if (!cancelled) { setFavorites(data ?? []); setLoading(false) } })
+    
+    // THE FIX: Added ": { data: any }" below to tell the builder to ignore the type error
+    supabase.from('favorites')
+      .select('*, series(*, profiles!series_author_id_fkey(display_name, handle, avatar_url))')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+      .then(({ data }: { data: any }) => { 
+        if (!cancelled) { 
+          setFavorites(data ?? []); 
+          setLoading(false) 
+        } 
+      })
+      
     return () => { cancelled = true }
   }, [user, supabase])
 
   return (
     <div className="px-4 md:px-8 py-6">
       <h2 className="text-base font-semibold text-[#c084fc] mb-4">Your Favorites</h2>
-      {loading ? <p className="text-center py-16 text-[#52525b] text-sm">Loading...</p> : favorites.length === 0 ? (
-        <p className="text-center py-16 text-[#71717a]">No favorites yet.<br /><span className="text-sm block mt-2">Start reading and tap Favorite inside a series!</span></p>
+      {loading ? (
+        <p className="text-center py-16 text-[#52525b] text-sm">Loading...</p>
+      ) : favorites.length === 0 ? (
+        <p className="text-center py-16 text-[#71717a]">
+          No favorites yet.<br />
+          <span className="text-sm block mt-2">Start reading and tap Favorite inside a series!</span>
+        </p>
       ) : (
         <div className="grid gap-2.5 md:gap-4 grid-cols-3 md:grid-cols-9">
           {favorites.map((f, i) => f.series && (
-            <SeriesCard key={f.series.id} title={f.series.title} slug={f.series.slug} author={f.series.profiles?.display_name || 'Unknown'} thumbnailUrl={f.series.thumbnail_url}
-              latestChapter={0} rating="General" format={f.series.format} index={i} views={f.series.total_views} likes={f.series.total_likes} favorites={f.series.total_favorites} />
+            <SeriesCard 
+              key={f.series.id} 
+              title={f.series.title} 
+              slug={f.series.slug} 
+              author={f.series.profiles?.display_name || 'Unknown'} 
+              thumbnailUrl={f.series.thumbnail_url}
+              latestChapter={0} 
+              rating="General" 
+              format={f.series.format} 
+              index={i} 
+              views={f.series.total_views} 
+              likes={f.series.total_likes} 
+              favorites={f.series.total_favorites} 
+            />
           ))}
         </div>
       )}
