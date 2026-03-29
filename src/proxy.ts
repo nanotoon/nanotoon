@@ -1,7 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
 
   const supabase = createServerClient(
@@ -25,12 +25,10 @@ export async function middleware(request: NextRequest) {
     }
   );
 
-  // Refresh the session (important — do NOT remove this)
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
-  // Redirect logged-out users away from protected pages
   const protectedPaths = [
     "/profile",
     "/settings",
@@ -50,7 +48,6 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // Redirect logged-in users away from auth pages
   const authPaths = ["/auth/signin", "/auth/register"];
   const isAuthPage = authPaths.some((p) =>
     request.nextUrl.pathname.startsWith(p)
@@ -67,9 +64,6 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    /*
-     * Match all paths except static files and images
-     */
     "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };
