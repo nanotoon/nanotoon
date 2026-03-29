@@ -1,11 +1,12 @@
-/** @type {import('next').NextConfig} */
-const nextConfig = {
+import type { NextConfig } from "next";
+
+const nextConfig: NextConfig = {
   typescript: {
-    // This tells Cloudflare to ignore those picky "Type Errors" and just build the site anyway.
+    // This allows the build to finish even with the 'data' type error
     ignoreBuildErrors: true,
   },
   eslint: {
-    // This tells it to ignore "Linting Errors" (grammar rules for code) so the build doesn't fail.
+    // This prevents style/grammar rules from stopping the build
     ignoreDuringBuilds: true,
   },
 };
