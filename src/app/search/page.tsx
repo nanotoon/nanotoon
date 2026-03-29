@@ -1,12 +1,13 @@
 'use client'
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { SeriesCard } from '@/components/SeriesCard'
 import { categories } from '@/data/mock'
 import { createClient } from '@/lib/supabase/client'
 
-export default function SearchPage() {
+// --- 1. Your original component logic stays here ---
+function SearchContent() {
   const searchParams = useSearchParams()
   const query = searchParams.get('q') || ''
   const supabase = useMemo(() => createClient(), [])
@@ -20,34 +21,35 @@ export default function SearchPage() {
     let cancelled = false
     async function search() {
       setLoading(true)
-      // Search by title (ilike handles per-word matching), genres array, tags array, and description
       const searchTerm = `%${query.trim()}%`
       let q = supabase.from('series')
         .select('*, profiles!series_author_id_fkey(display_name, handle, avatar_url)')
         .or(`title.ilike.${searchTerm},description.ilike.${searchTerm}`)
         .order('total_views', { ascending: false })
         .limit(50)
+      
       if (genreFilter !== 'All') q = q.contains('genres', [genreFilter])
       if (formatFilter !== 'All') q = q.eq('format', formatFilter)
+      
       const { data } = await q
 
-      // Also search by genre/tag match if title/desc didn't catch it
       let extraResults: any[] = []
       if (data && data.length < 10) {
         const { data: genreMatch } = await supabase.from('series')
           .select('*, profiles!series_author_id_fkey(display_name, handle, avatar_url)')
           .contains('genres', [query.trim()])
           .order('total_views', { ascending: false }).limit(20)
+        
         const { data: tagMatch } = await supabase.from('series')
           .select('*, profiles!series_author_id_fkey(display_name, handle, avatar_url)')
           .contains('tags', [query.trim()])
           .order('total_views', { ascending: false }).limit(20)
+        
         const existingIds = new Set((data ?? []).map((s: any) => s.id))
         extraResults = [...(genreMatch ?? []), ...(tagMatch ?? [])].filter(s => !existingIds.has(s.id))
       }
 
       if (!cancelled) {
-        // Deduplicate
         const seen = new Set<string>()
         const all = [...(data ?? []), ...extraResults].filter(s => {
           if (seen.has(s.id)) return false
@@ -79,23 +81,4 @@ export default function SearchPage() {
         </Link>
         <h1 className="text-lg font-bold">Results for: <span className="text-[#c084fc]">&quot;{query}&quot;</span></h1>
       </div>
-      <div className="flex gap-2 flex-wrap mb-4">
-        <PillGroup label="Genre" options={['All', ...categories.map((c: any) => c.name)]} value={genreFilter} onChange={setGenreFilter} />
-        <PillGroup label="Format" options={['All', 'Series', 'One Shot']} value={formatFilter} onChange={setFormatFilter} />
-      </div>
-      {loading ? <p className="text-center py-12 text-[#52525b] text-sm">Searching...</p> : (
-        <>
-          <p className="text-xs text-[#71717a] mb-3">{results.length} result{results.length !== 1 ? 's' : ''}</p>
-          {results.length > 0 ? (
-            <div className="grid gap-2.5 md:gap-4 grid-cols-3 md:grid-cols-9">
-              {results.map((s, i) => (
-                <SeriesCard key={s.id} title={s.title} slug={s.slug} author={s.profiles?.display_name || 'Unknown'} thumbnailUrl={s.thumbnail_url}
-                  latestChapter={0} rating="General" format={s.format} index={i} views={s.total_views} likes={s.total_likes} favorites={s.total_favorites} />
-              ))}
-            </div>
-          ) : <p className="text-center py-14 text-[#71717a]">No series match your search.</p>}
-        </>
-      )}
-    </div>
-  )
-}
+      <div className="
