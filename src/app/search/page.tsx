@@ -6,7 +6,6 @@ import { SeriesCard } from '@/components/SeriesCard'
 import { categories } from '@/data/mock'
 import { createClient } from '@/lib/supabase/client'
 
-// --- 1. Your original component logic stays here ---
 function SearchContent() {
   const searchParams = useSearchParams()
   const query = searchParams.get('q') || ''
@@ -81,4 +80,31 @@ function SearchContent() {
         </Link>
         <h1 className="text-lg font-bold">Results for: <span className="text-[#c084fc]">&quot;{query}&quot;</span></h1>
       </div>
-      <div className="
+      <div className="flex gap-2 flex-wrap mb-4">
+        <PillGroup label="Genre" options={['All', ...categories.map((c: any) => c.name)]} value={genreFilter} onChange={setGenreFilter} />
+        <PillGroup label="Format" options={['All', 'Series', 'One Shot']} value={formatFilter} onChange={setFormatFilter} />
+      </div>
+      {loading ? <p className="text-center py-12 text-[#52525b] text-sm">Searching...</p> : (
+        <>
+          <p className="text-xs text-[#71717a] mb-3">{results.length} result{results.length !== 1 ? 's' : ''}</p>
+          {results.length > 0 ? (
+            <div className="grid gap-2.5 md:gap-4 grid-cols-3 md:grid-cols-9">
+              {results.map((s, i) => (
+                <SeriesCard key={s.id} title={s.title} slug={s.slug} author={s.profiles?.display_name || 'Unknown'} thumbnailUrl={s.thumbnail_url}
+                  latestChapter={0} rating="General" format={s.format} index={i} views={s.total_views} likes={s.total_likes} favorites={s.total_favorites} />
+              ))}
+            </div>
+          ) : <p className="text-center py-14 text-[#71717a]">No series match your search.</p>}
+        </>
+      )}
+    </div>
+  )
+}
+
+export default function SearchPage() {
+  return (
+    <Suspense fallback={<p className="text-center py-12 text-[#52525b] text-sm">Searching...</p>}>
+      <SearchContent />
+    </Suspense>
+  )
+}
