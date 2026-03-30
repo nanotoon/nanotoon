@@ -15,16 +15,22 @@ export function Navbar() {
   const [showUpload, setShowUpload] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
 
-  // Real auth state — replaces the old hardcoded useState(true)
   const { user, profile, loading, signOut } = useAuth()
   const isLoggedIn = !!user
 
-  const tabs = [
+  // Base tabs always visible
+  const publicTabs = [
     { href: '/', label: 'Read' },
     { href: '/categories', label: 'Categories' },
+  ]
+
+  // Tabs only visible when logged in
+  const privateTabs = [
     { href: '/favorites', label: 'Favorites' },
     { href: '/following', label: 'Following' },
   ]
+
+  const tabs = isLoggedIn ? [...publicTabs, ...privateTabs] : publicTabs
 
   function handleSearch(e: React.KeyboardEvent) {
     if (e.key === 'Enter' && searchQuery.trim()) {
@@ -40,7 +46,6 @@ export function Navbar() {
     router.refresh()
   }
 
-  // Display name and handle from real profile, with fallbacks
   const displayName = profile?.display_name || user?.email?.split('@')[0] || 'User'
   const handle = profile?.handle || 'user'
 

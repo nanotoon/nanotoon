@@ -1,16 +1,13 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { getCloudflareContext } from "@opennextjs/cloudflare";
 
 const R2_PUBLIC_URL = "https://pub-6d31092e1f8446afba2712c91fc6ff8d.r2.dev";
 
 async function uploadToR2(file: File, filePath: string): Promise<string> {
-  // @ts-ignore
-  const r2 = (process.env as any).ASSETS_R2 ?? (globalThis as any).__r2_bucket;
-
-  // Use the R2 binding from Cloudflare Workers env
-  const cf = (globalThis as any)[Symbol.for("cloudflare-request-context")];
-  const bucket = cf?.env?.R2_BUCKET;
+  const { env } = await getCloudflareContext();
+  const bucket = (env as any).R2_BUCKET;
 
   if (!bucket) throw new Error("R2 bucket not available");
 
