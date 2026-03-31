@@ -14,19 +14,25 @@ function timeAgo(d: string) {
 
 export default function NotificationsPage() {
   const { show } = useToast()
-  const { user } = useAuth()
+  const { user, loading: authLoading } = useAuth()
   const supabase = useMemo(() => createClient(), [])
   const [notifs, setNotifs] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    if (authLoading) return
     if (!user) { setLoading(false); return }
-    let c = false
-    supabase.from('notifications').select('*, actor:profiles!notifications_actor_id_fkey(display_name, handle, avatar_url)')
+    let cancelled = false
+    const timeout = setTimeout(() => { if (!cancelled) setLoading(false) }, 8000)
+    supabase.from('notifications')
+      .select('*, actor:profiles(display_name, handle, avatar_url)')
       .eq('user_id', user.id).order('created_at', { ascending: false }).limit(50)
-      .then(({ data }: any) => { if (!c) { setNotifs(data ?? []); setLoading(false) } })
-    return () => { c = true }
-  }, [user, supabase])
+      .then(({ data }: any) => {
+        clearTimeout(timeout)
+        if (!cancelled) { setNotifs(data ?? []); setLoading(false) }
+      }).catch(() => { clearTimeout(timeout); if (!cancelled) setLoading(false) })
+    return () => { cancelled = true; clearTimeout(timeout) }
+  }, [user, authLoading, supabase])
 
   async function markAllRead() {
     if (!user) return
@@ -46,17 +52,27 @@ export default function NotificationsPage() {
         </div>
         <button onClick={markAllRead} className="text-xs text-[#c084fc] bg-transparent border-none cursor-pointer">Mark all read</button>
       </div>
-      {loading ? <p className="text-center py-12 text-[#52525b] text-sm">Loading...</p> : notifs.length === 0 ? (
+      {loading ? (
+        <p className="text-center py-12 text-[#52525b] text-sm">Loading...</p>
+      ) : !user ? (
+        <p className="text-center py-12 text-[#71717a]">Sign in to see notifications.</p>
+      ) : notifs.length === 0 ? (
         <p className="text-center py-12 text-[#71717a]">No notifications yet.</p>
       ) : (
         <div className="bg-[#18181b] rounded-2xl px-4">
           {notifs.map(n => (
-            <div key={n.id} onClick={async () => { await supabase.from('notifications').update({ read: true }).eq('id', n.id); setNotifs(prev => prev.map(x => x.id === n.id ? { ...x, read: true } : x)) }}
-              className="flex items-start gap-2.5 py-3 border-b border-[#27272a] last:border-b-0 cursor-pointer hover:bg-white/[0.02]">
+            <div key={n.id} onClick={async () => {
+              await supabase.from('notifications').update({ read: true }).eq('id', n.id)
+              setNotifs(prev => prev.map(x => x.id === n.id ? { ...x, read: true } : x))
+            }} className="flex items-start gap-2.5 py-3 border-b border-[#27272a] last:border-b-0 cursor-pointer hover:bg-white/[0.02]">
               <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${n.read ? 'opacity-0' : 'bg-red-600'}`}></div>
-              {n.actor?.avatar_url ? <img src={n.actor.avatar_url} className="w-8 h-8 rounded-full object-cover" /> : <Avatar name={n.actor?.display_name || 'Someone'} size={32} />}
+              {n.actor?.avatar_url
+                ? <img src={n.actor.avatar_url} className="w-8 h-8 rounded-full object-cover" alt="" />
+                : <Avatar name={n.actor?.display_name || 'Someone'} size={32} />}
               <div className="flex-1 min-w-0">
-                <div className={`text-sm ${n.read ? 'text-[#a1a1aa]' : 'text-[#e4e4e7]'}`}><strong>{n.actor?.display_name || 'Someone'}</strong> {n.message}</div>
+                <div className={`text-sm ${n.read ? 'text-[#a1a1aa]' : 'text-[#e4e4e7]'}`}>
+                  <strong>{n.actor?.display_name || 'Someone'}</strong> {n.message}
+                </div>
                 <div className="text-[0.7rem] text-[#52525b] mt-0.5">{n.created_at ? timeAgo(n.created_at) : ''}</div>
               </div>
             </div>

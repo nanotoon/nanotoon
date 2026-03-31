@@ -50,9 +50,10 @@ export default function ReaderPage() {
 
   useEffect(() => {
     let c = false
+    const timeout = setTimeout(() => { if (!c) setLoading(false) }, 10000)
     async function load() {
       try {
-        const { data: s } = await supabase.from('series').select('*, profiles!series_author_id_fkey(display_name, handle, avatar_url)').eq('slug', slug).single()
+        const { data: s } = await supabase.from('series').select('*, profiles(display_name, handle, avatar_url)').eq('slug', slug).single()
         if (!s || c) { setLoading(false); return }
         setSeries(s)
         const { data: chs } = await supabase.from('chapters').select('*').eq('series_id', s.id).order('chapter_number', { ascending: true })
@@ -74,8 +75,9 @@ export default function ReaderPage() {
           await supabase.from('series').update({ total_views: (s.total_views ?? 0) + 1 }).eq('id', s.id)
           if (!c) setSeries((p: any) => p ? { ...p, total_views: (p.total_views ?? 0) + 1 } : p)
         }
+        clearTimeout(timeout)
         if (!c) setLoading(false)
-      } catch { if (!c) setLoading(false) }
+      } catch { clearTimeout(timeout); if (!c) setLoading(false) }
     }
     load()
     return () => { c = true }

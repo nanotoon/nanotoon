@@ -18,18 +18,19 @@ function BrowseContent() {
 
   useEffect(() => {
     let cancelled = false
+    const timeout = setTimeout(() => { if (!cancelled) setLoading(false) }, 8000)
     async function load() {
       try {
         setLoading(true)
         const col = mode === 'latest' ? 'updated_at' : 'total_views'
         const { data } = await supabase.from('series')
-          .select('*, profiles!series_author_id_fkey(display_name, handle, avatar_url)')
+          .select('*, profiles(display_name, handle, avatar_url)')
           .order(col, { ascending: false }).limit(limit)
-        if (!cancelled) { setSeries(data ?? []); setLoading(false) }
-      } catch { if (!cancelled) setLoading(false) }
+        clearTimeout(timeout); if (!cancelled) { setSeries(data ?? []); setLoading(false) }
+      } catch { clearTimeout(timeout); if (!cancelled) setLoading(false) }
     }
     load()
-    return () => { cancelled = true }
+    return () => { cancelled = true; clearTimeout(timeout) }
   }, [mode, limit, supabase])
 
   return (

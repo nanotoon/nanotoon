@@ -18,11 +18,12 @@ function SearchContent() {
   useEffect(() => {
     if (!query.trim()) { setResults([]); setLoading(false); return }
     let cancelled = false
+    const timeout = setTimeout(() => { if (!cancelled) setLoading(false) }, 8000)
     async function search() {
       setLoading(true)
       const searchTerm = `%${query.trim()}%`
       let q = supabase.from('series')
-        .select('*, profiles!series_author_id_fkey(display_name, handle, avatar_url)')
+        .select('*, profiles(display_name, handle, avatar_url)')
         .or(`title.ilike.${searchTerm},description.ilike.${searchTerm}`)
         .order('total_views', { ascending: false })
         .limit(50)
@@ -35,12 +36,12 @@ function SearchContent() {
       let extraResults: any[] = []
       if (data && data.length < 10) {
         const { data: genreMatch } = await supabase.from('series')
-          .select('*, profiles!series_author_id_fkey(display_name, handle, avatar_url)')
+          .select('*, profiles(display_name, handle, avatar_url)')
           .contains('genres', [query.trim()])
           .order('total_views', { ascending: false }).limit(20)
         
         const { data: tagMatch } = await supabase.from('series')
-          .select('*, profiles!series_author_id_fkey(display_name, handle, avatar_url)')
+          .select('*, profiles(display_name, handle, avatar_url)')
           .contains('tags', [query.trim()])
           .order('total_views', { ascending: false }).limit(20)
         
@@ -54,12 +55,13 @@ function SearchContent() {
           if (seen.has(s.id)) return false
           seen.add(s.id); return true
         })
+        clearTimeout(timeout)
         setResults(all)
         setLoading(false)
       }
     }
     search()
-    return () => { cancelled = true }
+    return () => { cancelled = true; clearTimeout(timeout) }
   }, [query, genreFilter, formatFilter, supabase])
 
   const PillGroup = ({ label, options, value, onChange }: any) => (

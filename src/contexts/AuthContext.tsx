@@ -35,12 +35,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const fetchProfile = useCallback(async (userId: string) => {
     try {
-      const { data }: any = await supabase
+      // maybeSingle returns null instead of throwing when no row found
+      const { data } = await supabase
         .from("profiles")
         .select("*")
         .eq("id", userId)
-        .single();
-      setProfile(data ?? null);
+        .maybeSingle();
+      setProfile((data as Profile) ?? null);
     } catch {
       setProfile(null);
     }
@@ -51,7 +52,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [user, fetchProfile]);
 
   useEffect(() => {
-    // Safety net: never stay loading forever
     loadingTimerRef.current = setTimeout(() => {
       setLoading(false);
     }, 6000);
@@ -91,20 +91,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [supabase, fetchProfile]);
 
   const signOut = async () => {
-    // Clear state immediately so UI updates right away
     setUser(null);
     setProfile(null);
     setLoading(false);
-
     try {
-      // Sign out from Supabase — clears the auth cookie
       await supabase.auth.signOut({ scope: 'local' });
     } catch {
-      // Even if this fails, we still do a hard reload below
+      // ignore
     }
-
-    // Hard reload to clear all in-memory state and cookies
-    // This is the most reliable way to fully log out in Chrome
     window.location.href = '/';
   };
 

@@ -12,7 +12,7 @@ function fmtNum(n: number) { if (n >= 1e6) return (n/1e6).toFixed(1).replace(/\.
 
 export default function ProfilePage() {
   const { show } = useToast()
-  const { user, profile, refreshProfile } = useAuth()
+  const { user, profile, refreshProfile, loading: authLoading } = useAuth()
   const supabase = useMemo(() => createClient(), [])
   const [showShare, setShowShare] = useState(false)
   const [mySeries, setMySeries] = useState<any[]>([])
@@ -22,7 +22,9 @@ export default function ProfilePage() {
   const pfpRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
+    if (authLoading) return
     if (!user) { setLoading(false); return }
+    const timeout = setTimeout(() => { if (!c) setLoading(false) }, 8000)
     let c = false
     Promise.all([
       supabase.from('series').select('*').eq('author_id', user.id).order('created_at', { ascending: false }),
@@ -31,7 +33,7 @@ export default function ProfilePage() {
     ]).then(([s, fr, fg]) => {
       if (!c) { setMySeries(s.data ?? []); setFollowerCount(fr.count ?? 0); setFollowingCount(fg.count ?? 0); setLoading(false) }
     })
-    return () => { c = true }
+    return () => { c = true; clearTimeout(timeout) }
   }, [user, supabase])
 
   async function handlePfp(e: React.ChangeEvent<HTMLInputElement>) {
