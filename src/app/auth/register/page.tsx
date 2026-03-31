@@ -13,7 +13,6 @@ export default function RegisterPage() {
   const [success, setSuccess] = useState('')
   const [loading, setLoading] = useState(false)
   const router = useRouter()
-
   const supabase = createClient()
 
   async function handleRegister() {
@@ -27,9 +26,6 @@ export default function RegisterPage() {
 
     setLoading(true)
 
-    // Sign up — the database trigger handle_new_user() automatically
-    // creates the profile row, so we do NOT insert into profiles manually.
-    // We pass the display_name in metadata so the trigger can use it.
     const { data, error: signUpError } = await supabase.auth.signUp({
       email,
       password,
@@ -47,14 +43,23 @@ export default function RegisterPage() {
       return
     }
 
-    // If email confirmation is required, show message
+    // Send welcome email (fire and forget — won't block the user)
+    try {
+      fetch('/api/send-welcome', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, displayName: name.trim() }),
+      }).catch(() => {/* silently ignore */})
+    } catch {/* silently ignore */}
+
+    // Email confirmation required
     if (data.user && !data.session) {
-      setSuccess('Check your email to confirm your account!')
+      setSuccess('Account created! Check your email to confirm your account, then sign in.')
       setLoading(false)
       return
     }
 
-    // If auto-confirmed (e.g. email confirmation disabled in Supabase), redirect
+    // Auto-confirmed
     if (data.session) {
       router.push('/')
       router.refresh()
@@ -68,9 +73,7 @@ export default function RegisterPage() {
     setError('')
     const { error } = await supabase.auth.signInWithOAuth({
       provider,
-      options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
-      },
+      options: { redirectTo: `${window.location.origin}/auth/callback` },
     })
     if (error) setError(error.message)
   }
@@ -92,12 +95,16 @@ export default function RegisterPage() {
         )}
 
         <div className="flex flex-col gap-2 mb-4">
-          <button onClick={() => handleOAuth('google')}
-            className="w-full p-2.5 border border-[#3f3f46] rounded-xl bg-transparent text-[#e4e4e7] text-sm flex items-center justify-center gap-2 cursor-pointer hover:border-[#a855f7]">
+          <button
+            onClick={() => handleOAuth('google')}
+            className="w-full p-2.5 border border-[#3f3f46] rounded-xl bg-transparent text-[#e4e4e7] text-sm flex items-center justify-center gap-2 cursor-pointer hover:border-[#a855f7]"
+          >
             🔵 Continue with Google
           </button>
-          <button onClick={() => handleOAuth('discord')}
-            className="w-full p-2.5 border border-[#3f3f46] rounded-xl bg-transparent text-[#e4e4e7] text-sm flex items-center justify-center gap-2 cursor-pointer hover:border-[#a855f7]">
+          <button
+            onClick={() => handleOAuth('discord')}
+            className="w-full p-2.5 border border-[#3f3f46] rounded-xl bg-transparent text-[#e4e4e7] text-sm flex items-center justify-center gap-2 cursor-pointer hover:border-[#a855f7]"
+          >
             🟣 Continue with Discord
           </button>
         </div>
@@ -108,22 +115,48 @@ export default function RegisterPage() {
           <div className="flex-1 h-px bg-[#27272a]"></div>
         </div>
 
-        <input type="text" placeholder="Display Name" value={name} onChange={e => setName(e.target.value)}
-          className="w-full bg-[#27272a] border border-[#3f3f46] rounded-xl p-2.5 text-[#e4e4e7] text-sm outline-none mb-2 focus:border-[#a855f7]" />
-        <input type="email" placeholder="Email address" value={email} onChange={e => setEmail(e.target.value)}
-          className="w-full bg-[#27272a] border border-[#3f3f46] rounded-xl p-2.5 text-[#e4e4e7] text-sm outline-none mb-2 focus:border-[#a855f7]" />
-        <input type="password" placeholder="Password (min 8 chars)" value={password} onChange={e => setPassword(e.target.value)}
-          className="w-full bg-[#27272a] border border-[#3f3f46] rounded-xl p-2.5 text-[#e4e4e7] text-sm outline-none mb-2 focus:border-[#a855f7]" />
-        <input type="password" placeholder="Confirm Password" value={confirm} onChange={e => setConfirm(e.target.value)}
+        <input
+          type="text"
+          placeholder="Display Name"
+          value={name}
+          onChange={e => setName(e.target.value)}
+          className="w-full bg-[#27272a] border border-[#3f3f46] rounded-xl p-2.5 text-[#e4e4e7] text-sm outline-none mb-2 focus:border-[#a855f7]"
+        />
+        <input
+          type="email"
+          placeholder="Email address"
+          value={email}
+          onChange={e => setEmail(e.target.value)}
+          className="w-full bg-[#27272a] border border-[#3f3f46] rounded-xl p-2.5 text-[#e4e4e7] text-sm outline-none mb-2 focus:border-[#a855f7]"
+        />
+        <input
+          type="password"
+          placeholder="Password (min 8 chars)"
+          value={password}
+          onChange={e => setPassword(e.target.value)}
+          className="w-full bg-[#27272a] border border-[#3f3f46] rounded-xl p-2.5 text-[#e4e4e7] text-sm outline-none mb-2 focus:border-[#a855f7]"
+        />
+        <input
+          type="password"
+          placeholder="Confirm Password"
+          value={confirm}
+          onChange={e => setConfirm(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && handleRegister()}
-          className="w-full bg-[#27272a] border border-[#3f3f46] rounded-xl p-2.5 text-[#e4e4e7] text-sm outline-none mb-2 focus:border-[#a855f7]" />
-        <button onClick={handleRegister} disabled={loading}
-          className="w-full p-2.5 bg-[#7c3aed] text-white rounded-xl font-medium text-sm border-none cursor-pointer hover:bg-[#6d28d9] mt-0.5 disabled:opacity-50">
+          className="w-full bg-[#27272a] border border-[#3f3f46] rounded-xl p-2.5 text-[#e4e4e7] text-sm outline-none mb-2 focus:border-[#a855f7]"
+        />
+        <button
+          onClick={handleRegister}
+          disabled={loading}
+          className="w-full p-2.5 bg-[#7c3aed] text-white rounded-xl font-medium text-sm border-none cursor-pointer hover:bg-[#6d28d9] mt-0.5 disabled:opacity-50"
+        >
           {loading ? 'Creating account...' : 'Create Account'}
         </button>
 
         <p className="text-center mt-3 text-xs text-[#71717a]">
-          Already have an account? <Link href="/auth/signin" className="text-[#c084fc] no-underline">Sign In</Link>
+          Already have an account?{' '}
+          <Link href="/auth/signin" className="text-[#c084fc] no-underline">
+            Sign In
+          </Link>
         </p>
       </div>
     </div>
