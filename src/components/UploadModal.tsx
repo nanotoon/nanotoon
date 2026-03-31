@@ -86,6 +86,40 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
     try {
       let seriesId = selectedSeriesId
 
+      // ── Ensure profile exists (fixes FK violation on upload) ───
+      // If the user registered via email and the DB trigger didn't run,
+      // they won't have a profile row, causing series insert to fail.
+      setProgress('Checking profile...')
+      const { data: existingProfile } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('id', user.id)
+        .single()
+
+      if (!existingProfile) {
+        const displayName =
+          user.user_metadata?.display_name ||
+          user.user_metadata?.full_name ||
+          user.email?.split('@')[0] ||
+          'Creator'
+        const handle =
+          user.user_metadata?.handle ||
+          user.email?.split('@')[0]?.replace(/[^a-zA-Z0-9_]/g, '') ||
+          `user_${user.id.slice(0, 8)}`
+
+        const { error: profileErr } = await supabase.from('profiles').insert({
+          id: user.id,
+          display_name: displayName,
+          handle: handle,
+        })
+        if (profileErr && !profileErr.message.includes('duplicate')) {
+          setUploadError('Profile setup failed: ' + profileErr.message)
+          onToast('Profile setup failed: ' + profileErr.message)
+          setUploading(false)
+          return
+        }
+      }
+
       // ── Create new series ──────────────────────────────────────
       if (mode === 'new') {
         setProgress('Creating series...')

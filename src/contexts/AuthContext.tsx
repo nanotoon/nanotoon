@@ -24,7 +24,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const supabase = useMemo(() => createClient(), []);
-  // Safety valve: ensure loading never stays true forever
   const loadingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const clearLoadingTimer = () => {
@@ -52,8 +51,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [user, fetchProfile]);
 
   useEffect(() => {
-    // Safety net: if loading is still true after 6 seconds, force it false.
-    // This prevents the forever-loading spinner caused by slow/failed Supabase calls.
+    // Safety net: never stay loading forever
     loadingTimerRef.current = setTimeout(() => {
       setLoading(false);
     }, 6000);
@@ -65,7 +63,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(u);
         if (u) await fetchProfile(u.id);
       } catch {
-        // getSession failed — just treat as logged out
+        // treat as logged out
       } finally {
         clearLoadingTimer();
         setLoading(false);
@@ -93,18 +91,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [supabase, fetchProfile]);
 
   const signOut = async () => {
-    // Optimistically clear state first so UI updates immediately
+    // Clear state immediately so UI updates right away
     setUser(null);
     setProfile(null);
-    // Then call Supabase signOut with a timeout so it never hangs forever
+    setLoading(false);
+
     try {
-      await Promise.race([
-        supabase.auth.signOut(),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000)),
-      ]);
+      // Sign out from Supabase — clears the auth cookie
+      await supabase.auth.signOut({ scope: 'local' });
     } catch {
-      // Even if signOut times out, the UI state is already cleared — user is effectively logged out
+      // Even if this fails, we still do a hard reload below
     }
+
+    // Hard reload to clear all in-memory state and cookies
+    // This is the most reliable way to fully log out in Chrome
+    window.location.href = '/';
   };
 
   return (
