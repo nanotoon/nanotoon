@@ -16,7 +16,7 @@ export default function ResetPasswordPage() {
   // Supabase puts the session tokens in the URL hash when the user clicks the email link.
   // We wait for the auth state to update before showing the form.
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event: string) => {
       if (event === 'PASSWORD_RECOVERY') {
         setReady(true)
       }
