@@ -51,16 +51,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [user, fetchProfile]);
 
   useEffect(() => {
+    // Fallback: stop loading after 2s max — never make users wait longer
     loadingTimerRef.current = setTimeout(() => {
       setLoading(false);
-    }, 6000);
+    }, 2000);
 
     const getSession = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
         const u = session?.user ?? null;
         setUser(u);
-        if (u) await fetchProfile(u.id);
+        // Fetch profile in background — don't block auth loading on it
+        if (u) fetchProfile(u.id).catch(() => {});
       } catch {
         // treat as logged out
       } finally {
@@ -75,7 +77,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const u = session?.user ?? null;
       setUser(u);
       if (u) {
-        await fetchProfile(u.id);
+        fetchProfile(u.id).catch(() => {});
       } else {
         setProfile(null);
       }
@@ -90,21 +92,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [supabase, fetchProfile]);
 
   const signOut = useCallback(async () => {
-    // Immediately clear all client state
+    // Immediately clear all client-side state
     setUser(null);
     setProfile(null);
     setLoading(false);
 
     try {
-      // Sign out from Supabase — use 'global' scope to invalidate all sessions
-      await supabase.auth.signOut({ scope: 'global' });
-    } catch {
-      // Even if the API call fails, we still want to clear local state
-    }
+      // Call server-side route to clear HttpOnly SSR cookies
+      await fetch('/api/signout', { method: 'POST' });
+    } catch { /* ignore */ }
 
-    // Clear any remaining cookies/storage that Supabase might have left
+    // Also call client-side signout to clear client tokens
     try {
-      // Clear all supabase-related items from localStorage
+      await supabase.auth.signOut({ scope: 'global' });
+    } catch { /* ignore */ }
+
+    // Clear all Supabase-related localStorage entries
+    try {
       const keysToRemove: string[] = [];
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
@@ -113,11 +117,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       }
       keysToRemove.forEach(key => localStorage.removeItem(key));
-    } catch {
-      // localStorage might not be available
-    }
+    } catch { /* ignore */ }
 
-    // Hard redirect to ensure clean state
+    // Hard redirect — fully reloads page so no stale session state
     window.location.href = '/';
   }, [supabase]);
 
