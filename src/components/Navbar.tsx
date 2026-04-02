@@ -24,11 +24,9 @@ export function Navbar() {
   const { user, profile, loading, signOut } = useAuth()
   const isLoggedIn = !!user
 
-  // Tabs: Read | Categories | Gallery (public) + Favorites | Following (private)
   const publicTabs = [
     { href: '/', label: 'Read' },
     { href: '/categories', label: 'Categories' },
-    { href: '/gallery', label: 'Gallery' },
   ]
 
   const privateTabs = [

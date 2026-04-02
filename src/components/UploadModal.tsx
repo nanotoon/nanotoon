@@ -8,16 +8,6 @@ const MAX_FILE_SIZE = 5 * 1024 * 1024 // 5 MB per image
 const MAX_TOTAL_SIZE = 30 * 1024 * 1024 // 30 MB total
 const MATURE_TOOLTIP_TEXT = `Violence & Dark Themes: We support high-stakes storytelling. Intense graphic violence and realistic blood are permitted in Mature-tagged chapters. However, content that exists solely to depict sadistic torture without narrative purpose, or content that mimics real-world 'snuff,' is prohibited to comply with safety regulations.\n\nNudity & Mature Content — Non-sexual nudity is allowed, provided that genitalia are fully obscured or censored. Pornographic content is strictly prohibited.\n\nProhibited Content:\n• Sexual content involving minors — zero tolerance\n• Instructions for making drugs, explosives, or weapons\n• Content that promotes self-harm or suicide\n• Malware, scams, or phishing\n• Content that incites real-world violence`
 
-// Wraps a promise with a timeout — rejects after ms milliseconds
-function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
-  return Promise.race([
-    promise,
-    new Promise<T>((_, reject) =>
-      setTimeout(() => reject(new Error(`${label} timed out after ${ms / 1000}s`)), ms)
-    ),
-  ])
-}
-
 function MatureTooltip({ isMobile }: { isMobile: boolean }) {
   const [show, setShow] = useState(false)
   if (isMobile) {
@@ -65,6 +55,7 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
   const [rating, setRating] = useState<string | null>(null)
   const [genres, setGenres] = useState<Set<string>>(new Set())
   const [desc, setDesc] = useState('')
+  const [tags, setTags] = useState('')
   const [readingMode, setReadingMode] = useState<'webtoon' | 'horizontal'>('webtoon')
   const [galleryReadingMode, setGalleryReadingMode] = useState<'horizontal' | 'webtoon'>('horizontal')
   const [files, setFiles] = useState<File[]>([])
@@ -136,29 +127,6 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
     r.readAsDataURL(f)
   }
 
-  // Ensure the user has a profile record — skip if it fails (don't block upload)
-  async function ensureProfile() {
-    if (!user) return
-    try {
-      const { data: existing } = await withTimeout(
-        supabase.from('profiles').select('id').eq('id', user.id).maybeSingle(),
-        4000,
-        'Profile check'
-      )
-      if (!existing) {
-        const displayName = user.user_metadata?.display_name || user.user_metadata?.full_name || user.email?.split('@')[0] || 'Creator'
-        const handle = (user.user_metadata?.handle || user.email?.split('@')[0]?.replace(/[^a-zA-Z0-9_]/g, '') || `user_${user.id.slice(0, 8)}`).toLowerCase()
-        await withTimeout(
-          supabase.from('profiles').insert({ id: user.id, display_name: displayName, handle }),
-          4000,
-          'Profile create'
-        )
-      }
-    } catch {
-      // Don't block the upload if profile check fails — the DB will enforce constraints
-    }
-  }
-
   async function submitSeries() {
     if (!user || !canPublishSeries) return
     setUploading(true)
@@ -166,108 +134,84 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
     setProgress('Preparing...')
 
     try {
-      // Ensure profile exists (non-blocking — won't hang the upload)
-      await ensureProfile()
-
       let seriesId = selectedSeriesId
+
+      setProgress('Preparing...')
+      const { data: existingProfile } = await supabase
+        .from('profiles').select('id').eq('id', user.id).maybeSingle()
+
+      if (!existingProfile) {
+        const displayName = user.user_metadata?.display_name || user.user_metadata?.full_name || user.email?.split('@')[0] || 'Creator'
+        const handle = (user.user_metadata?.handle || user.email?.split('@')[0]?.replace(/[^a-zA-Z0-9_]/g, '') || `user_${user.id.slice(0, 8)}`).toLowerCase()
+        const { error: profileErr } = await supabase.from('profiles').insert({ id: user.id, display_name: displayName, handle })
+        if (profileErr && !profileErr.message.includes('duplicate') && !profileErr.code?.includes('23505')) {
+          setUploadError('Profile setup failed: ' + profileErr.message)
+          onToast('Profile setup failed: ' + profileErr.message)
+          setUploading(false); return
+        }
+      }
 
       if (mode === 'new') {
         setProgress('Creating series...')
         let thumbnailUrl: string | null = null
-
         if (thumbFile) {
           setProgress('Uploading thumbnail...')
           const ext = thumbFile.name.split('.').pop() || 'jpg'
           const path = `thumbnails/${user.id}/${Date.now()}.${ext}`
-          const { error: thumbErr } = await withTimeout(
-            supabase.storage.from('series-assets').upload(path, thumbFile, { upsert: true }),
-            30000,
-            'Thumbnail upload'
-          )
-          if (thumbErr) {
-            onToast('Thumbnail skipped: ' + thumbErr.message)
-          } else {
-            thumbnailUrl = supabase.storage.from('series-assets').getPublicUrl(path).data.publicUrl
-          }
+          const { error: thumbErr } = await supabase.storage.from('series-assets').upload(path, thumbFile, { upsert: true })
+          if (thumbErr) { onToast('Thumbnail skipped: ' + thumbErr.message) }
+          else { thumbnailUrl = supabase.storage.from('series-assets').getPublicUrl(path).data.publicUrl }
         }
 
         const slug = seriesTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') + '-' + Date.now().toString(36)
-        const { data: ns, error: seriesErr } = await withTimeout(
-          supabase.from('series').insert({
-            title: seriesTitle,
-            slug,
-            description: desc || null,
-            format: format!,
-            genres: Array.from(genres),
-            thumbnail_url: thumbnailUrl,
-            author_id: user.id,
-            reading_mode: readingMode,
-          }).select().single(),
-          10000,
-          'Series create'
-        )
+        const { data: ns, error: seriesErr } = await supabase.from('series').insert({
+          title: seriesTitle, slug, description: desc || null,
+          format: format!, genres: Array.from(genres),
+          thumbnail_url: thumbnailUrl, author_id: user.id,
+          reading_mode: readingMode,
+        }).select().single()
 
         if (seriesErr) {
-          const msg = seriesErr.message || 'Series creation failed'
-          setUploadError(msg)
-          onToast('Error: ' + msg)
-          setUploading(false)
-          return
+          setUploadError(seriesErr.message || 'Series creation failed')
+          onToast('Error: ' + (seriesErr.message || 'Series creation failed'))
+          setUploading(false); return
         }
         seriesId = ns.id
       }
 
-      // Upload pages
       const pageUrls: string[] = []
       for (let i = 0; i < files.length; i++) {
         setProgress(`Uploading page ${i + 1}/${files.length}...`)
         const f = files[i]
         const ext = f.name.split('.').pop() || 'jpg'
         const path = `chapters/${seriesId}/${chapterNumber}/${String(i + 1).padStart(3, '0')}.${ext}`
-        const { error: pageErr } = await withTimeout(
-          supabase.storage.from('series-assets').upload(path, f, { upsert: true }),
-          30000,
-          `Page ${i + 1} upload`
-        )
+        const { error: pageErr } = await supabase.storage.from('series-assets').upload(path, f, { upsert: true })
         if (pageErr) {
           const msg = `Page ${i + 1} failed: ${pageErr.message}`
-          setUploadError(msg)
-          onToast(msg)
-          setUploading(false)
-          return
+          setUploadError(msg); onToast(msg); setUploading(false); return
         }
         pageUrls.push(supabase.storage.from('series-assets').getPublicUrl(path).data.publicUrl)
       }
 
       setProgress('Saving chapter...')
-      const { error: chErr } = await withTimeout(
-        supabase.from('chapters').insert({
-          series_id: seriesId,
-          chapter_number: chapterNumber,
-          title: chapterTitle,
-          rating: rating!,
-          page_urls: pageUrls.length > 0 ? pageUrls : null,
-          reading_mode: readingMode,
-        }),
-        10000,
-        'Chapter save'
-      )
-
+      const { error: chErr } = await supabase.from('chapters').insert({
+        series_id: seriesId, chapter_number: chapterNumber,
+        title: chapterTitle, rating: rating!,
+        page_urls: pageUrls.length > 0 ? pageUrls : null,
+        reading_mode: readingMode,
+      })
       if (chErr) {
-        const msg = chErr.message || 'Chapter save failed'
-        setUploadError(msg)
-        onToast('Error: ' + msg)
-        setUploading(false)
-        return
+        setUploadError(chErr.message || 'Chapter save failed')
+        onToast('Error: ' + (chErr.message || 'Chapter save failed'))
+        setUploading(false); return
       }
 
-      await supabase.from('series').update({ updated_at: new Date().toISOString() }).eq('id', seriesId!)
+      await supabase.from('series').update({ updated_at: new Date().toISOString() }).eq('id', seriesId)
       onToast('Chapter published successfully! 🎉')
       onClose()
     } catch (err: any) {
-      const msg = err?.message || 'Unexpected error during upload'
-      setUploadError(msg)
-      onToast('Error: ' + msg)
+      const msg = err?.message || 'Unexpected error'
+      setUploadError(msg); onToast('Error: ' + msg)
     }
     setUploading(false)
   }
@@ -279,76 +223,54 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
     setProgress('Preparing gallery...')
 
     try {
-      // Ensure profile exists (non-blocking)
-      await ensureProfile()
+      // Ensure profile exists
+      const { data: existingProfile } = await supabase.from('profiles').select('id').eq('id', user.id).maybeSingle()
+      if (!existingProfile) {
+        const displayName = user.user_metadata?.display_name || user.user_metadata?.full_name || user.email?.split('@')[0] || 'Creator'
+        const handle = (user.user_metadata?.handle || user.email?.split('@')[0]?.replace(/[^a-zA-Z0-9_]/g, '') || `user_${user.id.slice(0, 8)}`).toLowerCase()
+        await supabase.from('profiles').insert({ id: user.id, display_name: displayName, handle })
+      }
 
-      // Upload images to storage
+      // Upload images
       const imageUrls: string[] = []
       for (let i = 0; i < files.length; i++) {
         setProgress(`Uploading image ${i + 1}/${files.length}...`)
         const f = files[i]
         const ext = f.name.split('.').pop() || 'jpg'
         const path = `gallery/${user.id}/${Date.now()}_${i}.${ext}`
-        const { error } = await withTimeout(
-          supabase.storage.from('series-assets').upload(path, f, { upsert: true }),
-          30000,
-          `Image ${i + 1} upload`
-        )
-        if (error) {
-          const msg = `Image ${i + 1} failed: ${error.message}`
-          setUploadError(msg)
-          onToast(msg)
-          setUploading(false)
-          return
-        }
+        const { error } = await supabase.storage.from('series-assets').upload(path, f, { upsert: true })
+        if (error) { setUploadError(`Image ${i + 1} failed: ${error.message}`); onToast(`Image ${i + 1} failed`); setUploading(false); return }
         imageUrls.push(supabase.storage.from('series-assets').getPublicUrl(path).data.publicUrl)
       }
 
-      // Upload album thumbnail if multiple images
+      // Upload thumbnail if album (multiple images)
       let thumbnailUrl: string | null = null
       if (files.length > 1 && thumbFile) {
         const ext = thumbFile.name.split('.').pop() || 'jpg'
         const path = `gallery/${user.id}/thumb_${Date.now()}.${ext}`
-        const { error } = await withTimeout(
-          supabase.storage.from('series-assets').upload(path, thumbFile, { upsert: true }),
-          30000,
-          'Thumbnail upload'
-        )
-        if (!error) {
-          thumbnailUrl = supabase.storage.from('series-assets').getPublicUrl(path).data.publicUrl
-        }
+        const { error } = await supabase.storage.from('series-assets').upload(path, thumbFile, { upsert: true })
+        if (!error) { thumbnailUrl = supabase.storage.from('series-assets').getPublicUrl(path).data.publicUrl }
       }
 
       setProgress('Saving gallery entry...')
-      const { error: gErr } = await withTimeout(
-        supabase.from('gallery').insert({
-          title: galleryTitle.trim(),
-          description: galleryDesc || null,
-          image_urls: imageUrls,
-          thumbnail_url: thumbnailUrl,
-          author_id: user.id,
-          is_mature: galleryMature,
-          tags: galleryTags ? galleryTags.split(',').map(t => t.trim()).filter(Boolean) : [],
-          reading_mode: galleryReadingMode,
-        }),
-        10000,
-        'Gallery save'
-      )
+      const { error: gErr } = await supabase.from('gallery').insert({
+        title: galleryTitle.trim(),
+        description: galleryDesc || null,
+        image_urls: imageUrls,
+        thumbnail_url: thumbnailUrl,
+        author_id: user.id,
+        is_mature: galleryMature,
+        tags: galleryTags ? galleryTags.split(',').map(t => t.trim()).filter(Boolean) : [],
+        reading_mode: galleryReadingMode,
+      })
 
-      if (gErr) {
-        const msg = gErr.message || 'Gallery save failed'
-        setUploadError(msg)
-        onToast('Error: ' + msg)
-        setUploading(false)
-        return
-      }
+      if (gErr) { setUploadError(gErr.message); onToast('Error: ' + gErr.message); setUploading(false); return }
 
       onToast('Gallery artwork published! 🎉')
       onClose()
     } catch (err: any) {
-      const msg = err?.message || 'Unexpected error during upload'
-      setUploadError(msg)
-      onToast('Error: ' + msg)
+      setUploadError(err?.message || 'Unexpected error')
+      onToast('Error: ' + (err?.message || 'Unexpected error'))
     }
     setUploading(false)
   }
@@ -363,7 +285,7 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
 
   return (
     <div className="fixed inset-0 bg-black/90 z-[200] flex items-start justify-center overflow-y-auto p-4 pb-10">
-      <div className={`bg-[#18181b] rounded-2xl w-full border border-[#27272a] max-w-[600px] md:max-w-[700px] ${step === 'form' ? 'md:min-h-[calc(100vh-80px)]' : ''}`}>
+      <div className={`bg-[#18181b] rounded-2xl w-full border border-[#27272a] ${step === 'choose' ? 'max-w-[600px] md:max-w-[700px]' : 'max-w-[600px] md:max-w-[700px]'} ${step === 'form' ? 'md:min-h-[calc(100vh-80px)]' : ''}`}>
         <div className="p-3.5 border-b border-[#27272a] flex justify-between items-center sticky top-0 bg-[#18181b] z-10 rounded-t-2xl">
           <h2 className="font-semibold text-base">
             {step === 'form' && uploadType === 'gallery' ? 'Upload to Gallery' :
@@ -455,6 +377,7 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
                 </button>
               </div>
 
+              {/* Reading Mode Toggle */}
               <div>
                 <label className="block text-xs text-[#71717a] mb-1.5">Reading Mode</label>
                 <div className="flex gap-1.5">
@@ -469,6 +392,7 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
                 </div>
               </div>
 
+              {/* Album thumbnail - only show if multiple images */}
               {isAlbum && (
                 <div>
                   <label className="block text-xs text-[#71717a] mb-1.5">Album Thumbnail <span className="text-[#52525b]">(optional, max 5MB)</span></label>
@@ -597,6 +521,7 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
                 </div>
               </div>
 
+              {/* Reading Mode Toggle */}
               <div>
                 <label className="block text-xs text-[#71717a] mb-1.5">Reading Mode</label>
                 <div className="flex gap-1.5">
