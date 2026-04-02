@@ -35,7 +35,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const fetchProfile = useCallback(async (userId: string) => {
     try {
-      // maybeSingle returns null instead of throwing when no row found
       const { data } = await supabase
         .from("profiles")
         .select("*")
@@ -90,17 +89,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [supabase, fetchProfile]);
 
-  const signOut = async () => {
+  const signOut = useCallback(async () => {
+    // Immediately clear all client state
     setUser(null);
     setProfile(null);
     setLoading(false);
+
     try {
-      await supabase.auth.signOut({ scope: 'local' });
+      // Sign out from Supabase — use 'global' scope to invalidate all sessions
+      await supabase.auth.signOut({ scope: 'global' });
     } catch {
-      // ignore
+      // Even if the API call fails, we still want to clear local state
     }
+
+    // Clear any remaining cookies/storage that Supabase might have left
+    try {
+      // Clear all supabase-related items from localStorage
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && (key.startsWith('sb-') || key.includes('supabase'))) {
+          keysToRemove.push(key);
+        }
+      }
+      keysToRemove.forEach(key => localStorage.removeItem(key));
+    } catch {
+      // localStorage might not be available
+    }
+
+    // Hard redirect to ensure clean state
     window.location.href = '/';
-  };
+  }, [supabase]);
 
   return (
     <AuthContext.Provider value={{ user, profile, loading, signOut, refreshProfile }}>

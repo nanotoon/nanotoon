@@ -22,26 +22,26 @@ export default function EditSeriesPage() {
   const [desc, setDesc] = useState('')
   const [format, setFormat] = useState('Series')
   const [genres, setGenres] = useState<Set<string>>(new Set())
+  const [readingMode, setReadingMode] = useState<'webtoon' | 'horizontal'>('webtoon')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [thumbPreview, setThumbPreview] = useState<string | null>(null)
   const [newThumbFile, setNewThumbFile] = useState<File | null>(null)
 
-  // Expanded chapter for editing
   const [expandedChId, setExpandedChId] = useState<string | null>(null)
   const [editChTitle, setEditChTitle] = useState('')
   const [editChRating, setEditChRating] = useState('General')
+  const [editChReadingMode, setEditChReadingMode] = useState<'webtoon' | 'horizontal'>('webtoon')
   const [savingCh, setSavingCh] = useState(false)
 
-  // Add chapter form
   const [showAddChapter, setShowAddChapter] = useState(false)
   const [newChTitle, setNewChTitle] = useState('')
   const [newChNumber, setNewChNumber] = useState(1)
   const [newChRating, setNewChRating] = useState('General')
+  const [newChReadingMode, setNewChReadingMode] = useState<'webtoon' | 'horizontal'>('webtoon')
   const [newChFiles, setNewChFiles] = useState<File[]>([])
   const [addingChapter, setAddingChapter] = useState(false)
   const chFileRef = useRef<HTMLInputElement>(null)
-  const addPageRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     async function fetch() {
@@ -52,6 +52,7 @@ export default function EditSeriesPage() {
       setDesc(s.description || '')
       setFormat(s.format)
       setGenres(new Set(s.genres || []))
+      setReadingMode(s.reading_mode || 'webtoon')
       setThumbPreview(s.thumbnail_url)
       const { data: chs } = await supabase.from('chapters').select('*').eq('series_id', s.id).order('chapter_number', { ascending: true })
       setChapters(chs ?? [])
@@ -59,20 +60,16 @@ export default function EditSeriesPage() {
       setLoading(false)
     }
     fetch()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug])
 
   function expandChapter(ch: any) {
-    if (expandedChId === ch.id) {
-      setExpandedChId(null)
-      return
-    }
+    if (expandedChId === ch.id) { setExpandedChId(null); return }
     setExpandedChId(ch.id)
     setEditChTitle(ch.title)
     setEditChRating(ch.rating)
+    setEditChReadingMode(ch.reading_mode || readingMode)
   }
 
-  // ─── Series Thumbnail ───────────────────────────────────────
   async function handleThumbChange(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0]
     if (!f) return
@@ -83,7 +80,6 @@ export default function EditSeriesPage() {
     r.readAsDataURL(f)
   }
 
-  // ─── Save Series Info ───────────────────────────────────────
   async function save() {
     if (!series || !user) return
     setSaving(true)
@@ -98,18 +94,18 @@ export default function EditSeriesPage() {
     }
     const { error } = await supabase.from('series').update({
       title, description: desc, format, genres: Array.from(genres),
-      thumbnail_url: thumbnailUrl, updated_at: new Date().toISOString()
+      thumbnail_url: thumbnailUrl, updated_at: new Date().toISOString(),
+      reading_mode: readingMode,
     }).eq('id', series.id)
     if (error) show('Save failed: ' + error.message)
     else {
-      setSeries((s: any) => ({ ...s, title, description: desc, format, genres: Array.from(genres), thumbnail_url: thumbnailUrl }))
+      setSeries((s: any) => ({ ...s, title, description: desc, format, genres: Array.from(genres), thumbnail_url: thumbnailUrl, reading_mode: readingMode }))
       setNewThumbFile(null)
       show('Changes saved!')
     }
     setSaving(false)
   }
 
-  // ─── Delete Series ──────────────────────────────────────────
   async function deleteSeries() {
     if (!series) return
     if (!confirm('Delete this series and all its chapters?')) return
@@ -119,21 +115,19 @@ export default function EditSeriesPage() {
     router.push('/profile')
   }
 
-  // ─── Save Chapter Edits ─────────────────────────────────────
   async function saveChapter(chId: string) {
     setSavingCh(true)
     const { error } = await supabase.from('chapters').update({
-      title: editChTitle, rating: editChRating
+      title: editChTitle, rating: editChRating, reading_mode: editChReadingMode,
     }).eq('id', chId)
     if (error) show('Failed: ' + error.message)
     else {
-      setChapters(prev => prev.map(c => c.id === chId ? { ...c, title: editChTitle, rating: editChRating } : c))
+      setChapters(prev => prev.map(c => c.id === chId ? { ...c, title: editChTitle, rating: editChRating, reading_mode: editChReadingMode } : c))
       show('Chapter updated!')
     }
     setSavingCh(false)
   }
 
-  // ─── Delete Chapter ─────────────────────────────────────────
   async function deleteChapter(id: string) {
     if (!confirm('Delete this chapter and all its pages?')) return
     const { error } = await supabase.from('chapters').delete().eq('id', id)
@@ -143,7 +137,6 @@ export default function EditSeriesPage() {
     show('Chapter deleted')
   }
 
-  // ─── Move Chapter ───────────────────────────────────────────
   async function moveChapter(id: string, direction: 'up' | 'down') {
     const idx = chapters.findIndex(c => c.id === id)
     if (idx < 0) return
@@ -164,7 +157,6 @@ export default function EditSeriesPage() {
     show('Chapter order updated')
   }
 
-  // ─── Page Management ────────────────────────────────────────
   async function deletePage(chId: string, pageIndex: number) {
     if (!confirm(`Delete page ${pageIndex + 1}?`)) return
     const ch = chapters.find(c => c.id === chId)
@@ -182,9 +174,7 @@ export default function EditSeriesPage() {
     const toIdx = direction === 'up' ? fromIdx - 1 : fromIdx + 1
     if (toIdx < 0 || toIdx >= ch.page_urls.length) return
     const newUrls = [...ch.page_urls]
-    const temp = newUrls[fromIdx]
-    newUrls[fromIdx] = newUrls[toIdx]
-    newUrls[toIdx] = temp
+    const temp = newUrls[fromIdx]; newUrls[fromIdx] = newUrls[toIdx]; newUrls[toIdx] = temp
     const { error } = await supabase.from('chapters').update({ page_urls: newUrls }).eq('id', chId)
     if (error) { show('Failed: ' + error.message); return }
     setChapters(prev => prev.map(c => c.id === chId ? { ...c, page_urls: newUrls } : c))
@@ -196,11 +186,9 @@ export default function EditSeriesPage() {
     if (files.length === 0) return
     const ch = chapters.find(c => c.id === chId)
     if (!ch || !series) return
-
     show(`Uploading ${files.length} page(s)...`)
     const existingUrls = ch.page_urls || []
     const newUrls: string[] = []
-
     for (let i = 0; i < files.length; i++) {
       const file = files[i]
       const ext = file.name.split('.').pop()
@@ -211,7 +199,6 @@ export default function EditSeriesPage() {
       const { data: { publicUrl } } = supabase.storage.from('series-assets').getPublicUrl(path)
       newUrls.push(publicUrl)
     }
-
     const allUrls = [...existingUrls, ...newUrls]
     const { error } = await supabase.from('chapters').update({ page_urls: allUrls }).eq('id', chId)
     if (error) { show('Failed to save: ' + error.message); return }
@@ -219,7 +206,6 @@ export default function EditSeriesPage() {
     show(`${files.length} page(s) added!`)
   }
 
-  // ─── Add New Chapter ────────────────────────────────────────
   async function addChapter() {
     if (!series || !user || !newChTitle.trim()) { show('Chapter title is required'); return }
     setAddingChapter(true)
@@ -236,6 +222,7 @@ export default function EditSeriesPage() {
     const { data: ch, error } = await supabase.from('chapters').insert({
       series_id: series.id, chapter_number: newChNumber, title: newChTitle.trim(),
       rating: newChRating, page_urls: pageUrls.length > 0 ? pageUrls : null,
+      reading_mode: newChReadingMode,
     }).select().single()
     if (error) { show('Failed: ' + error.message); setAddingChapter(false); return }
     await supabase.from('series').update({ updated_at: new Date().toISOString() }).eq('id', series.id)
@@ -255,7 +242,6 @@ export default function EditSeriesPage() {
       </Link>
       <h1 className="text-xl font-bold text-[#c084fc] mb-1.5">Edit Series</h1>
 
-      {/* ─── Series Info ─────────────────────────────────────── */}
       <div className="bg-[#18181b] rounded-2xl p-4 mb-3.5 flex flex-col gap-3.5">
         <div>
           <label className="block text-xs text-[#71717a] mb-1.5">Series Thumbnail</label>
@@ -283,6 +269,20 @@ export default function EditSeriesPage() {
             ))}
           </div>
         </div>
+        {/* Reading Mode */}
+        <div>
+          <label className="block text-xs text-[#71717a] mb-1.5">Default Reading Mode</label>
+          <div className="flex gap-1.5">
+            <button onClick={() => setReadingMode('webtoon')}
+              className={`px-3 py-1.5 rounded-lg cursor-pointer text-xs font-medium border ${readingMode === 'webtoon' ? 'border-[#a855f7] text-[#c084fc] bg-purple-500/10' : 'border-[#3f3f46] text-[#71717a] bg-transparent'}`}>
+              ▼ Webtoon (Vertical)
+            </button>
+            <button onClick={() => setReadingMode('horizontal')}
+              className={`px-3 py-1.5 rounded-lg cursor-pointer text-xs font-medium border ${readingMode === 'horizontal' ? 'border-[#a855f7] text-[#c084fc] bg-purple-500/10' : 'border-[#3f3f46] text-[#71717a] bg-transparent'}`}>
+              ◀▶ Horizontal Pages
+            </button>
+          </div>
+        </div>
         <div>
           <label className="block text-xs text-[#71717a] mb-1.5">Genres <span className="text-[#52525b]">(max 3)</span></label>
           <div className="flex gap-1 flex-wrap">
@@ -298,19 +298,15 @@ export default function EditSeriesPage() {
         </div>
       </div>
 
-      {/* ─── Chapters ────────────────────────────────────────── */}
       <h3 className="font-semibold text-sm mb-2">Chapters ({chapters.length})</h3>
       {chapters.length === 0 && <p className="text-[#52525b] text-xs mb-4">No chapters yet.</p>}
 
       {chapters.map((ch, idx) => {
         const isExpanded = expandedChId === ch.id
         const pages = ch.page_urls || []
-
         return (
           <div key={ch.id} className="mb-2">
-            {/* Chapter header — clickable */}
-            <div
-              onClick={() => expandChapter(ch)}
+            <div onClick={() => expandChapter(ch)}
               className={`bg-[#27272a] rounded-lg p-2.5 flex items-center gap-2 cursor-pointer hover:bg-[#303033] flex-wrap ${isExpanded ? 'rounded-b-none border-b border-[#3f3f46]' : ''}`}>
               <div className="flex-1 min-w-0">
                 <div className="font-medium text-sm">Ch. {ch.chapter_number} — {ch.title}</div>
@@ -318,15 +314,14 @@ export default function EditSeriesPage() {
                   <span className={ch.rating === 'Mature' ? 'text-[#fbbf24]' : 'text-[#a1a1aa]'}>{ch.rating}</span>
                   <span className="text-[#52525b]"> · {pages.length} pages</span>
                   {ch.views > 0 && <span className="text-[#52525b]"> · {ch.views} views</span>}
+                  {ch.reading_mode && <span className="text-[#a855f7]"> · {ch.reading_mode === 'horizontal' ? '◀▶' : '▼'}</span>}
                 </div>
               </div>
               <span className="text-[#71717a] text-xs shrink-0">{isExpanded ? '▲ Close' : '▼ Edit'}</span>
             </div>
 
-            {/* Expanded chapter editor */}
             {isExpanded && (
               <div className="bg-[#1e1e21] rounded-b-lg p-3 border border-t-0 border-[#3f3f46]">
-                {/* Edit title & rating */}
                 <div className="flex flex-col md:flex-row gap-2 mb-3">
                   <div className="flex-1">
                     <label className="block text-[0.65rem] text-[#71717a] mb-0.5">Chapter Title</label>
@@ -341,7 +336,15 @@ export default function EditSeriesPage() {
                     </div>
                   </div>
                 </div>
-                <div className="flex gap-1.5 mb-3">
+                {/* Reading mode for this chapter */}
+                <div className="mb-3">
+                  <label className="block text-[0.65rem] text-[#71717a] mb-0.5">Reading Mode</label>
+                  <div className="flex gap-1">
+                    <button onClick={() => setEditChReadingMode('webtoon')} className={`px-2 py-1 rounded text-xs border ${editChReadingMode === 'webtoon' ? 'border-[#a855f7] text-[#c084fc] bg-purple-500/10' : 'border-[#3f3f46] text-[#71717a] bg-transparent'}`}>▼ Webtoon</button>
+                    <button onClick={() => setEditChReadingMode('horizontal')} className={`px-2 py-1 rounded text-xs border ${editChReadingMode === 'horizontal' ? 'border-[#a855f7] text-[#c084fc] bg-purple-500/10' : 'border-[#3f3f46] text-[#71717a] bg-transparent'}`}>◀▶ Horizontal</button>
+                  </div>
+                </div>
+                <div className="flex gap-1.5 mb-3 flex-wrap">
                   <button onClick={() => saveChapter(ch.id)} disabled={savingCh}
                     className="px-3 py-1 bg-[#7c3aed] text-white rounded-lg text-xs border-none cursor-pointer hover:bg-[#6d28d9] disabled:opacity-50">
                     {savingCh ? 'Saving...' : 'Save Chapter'}
@@ -354,7 +357,6 @@ export default function EditSeriesPage() {
                     className="px-2 py-1 border border-red-500/30 rounded-lg text-xs text-[#f87171] cursor-pointer bg-transparent hover:bg-red-500/10">Delete</button>
                 </div>
 
-                {/* Pages grid */}
                 <label className="block text-[0.65rem] text-[#71717a] mb-1.5">Pages ({pages.length})</label>
                 {pages.length === 0 ? (
                   <p className="text-[#52525b] text-xs mb-2">No pages. Add some below.</p>
@@ -364,36 +366,20 @@ export default function EditSeriesPage() {
                       <div key={pi} className="relative group">
                         <img src={url} className="w-full aspect-[3/4] object-cover rounded bg-[#27272a]" alt={`Page ${pi + 1}`} />
                         <div className="absolute top-0 left-0 bg-black/70 text-[0.55rem] text-white px-1 rounded-br">{pi + 1}</div>
-                        {/* Controls overlay on hover */}
                         <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1 rounded">
-                          {pi > 0 && (
-                            <button onClick={() => movePage(ch.id, pi, 'up')}
-                              className="w-5 h-5 bg-[#27272a] border border-[#52525b] rounded text-[0.6rem] text-white cursor-pointer flex items-center justify-center">◀</button>
-                          )}
-                          <button onClick={() => deletePage(ch.id, pi)}
-                            className="w-5 h-5 bg-red-600/80 border-none rounded text-[0.6rem] text-white cursor-pointer flex items-center justify-center">✕</button>
-                          {pi < pages.length - 1 && (
-                            <button onClick={() => movePage(ch.id, pi, 'down')}
-                              className="w-5 h-5 bg-[#27272a] border border-[#52525b] rounded text-[0.6rem] text-white cursor-pointer flex items-center justify-center">▶</button>
-                          )}
+                          {pi > 0 && <button onClick={() => movePage(ch.id, pi, 'up')} className="w-5 h-5 bg-[#27272a] border border-[#52525b] rounded text-[0.6rem] text-white cursor-pointer flex items-center justify-center">◀</button>}
+                          <button onClick={() => deletePage(ch.id, pi)} className="w-5 h-5 bg-red-600/80 border-none rounded text-[0.6rem] text-white cursor-pointer flex items-center justify-center">✕</button>
+                          {pi < pages.length - 1 && <button onClick={() => movePage(ch.id, pi, 'down')} className="w-5 h-5 bg-[#27272a] border border-[#52525b] rounded text-[0.6rem] text-white cursor-pointer flex items-center justify-center">▶</button>}
                         </div>
                       </div>
                     ))}
                   </div>
                 )}
-                {/* Mobile-friendly page controls */}
                 <div className="md:hidden text-[0.6rem] text-[#52525b] mb-2">Tap and hold pages on desktop to move/delete</div>
-
-                {/* Add more pages */}
                 <button onClick={() => {
-                  const input = document.createElement('input')
-                  input.type = 'file'
-                  input.accept = '.jpg,.jpeg,.png,.webp'
-                  input.multiple = true
-                  input.onchange = (e) => addPagesToChapter(ch.id, e as any)
-                  input.click()
-                }}
-                  className="w-full py-1.5 border border-dashed border-[#3f3f46] rounded-lg bg-transparent text-[#71717a] cursor-pointer text-xs hover:border-[#a855f7] hover:text-[#c084fc]">
+                  const input = document.createElement('input'); input.type = 'file'; input.accept = '.jpg,.jpeg,.png,.webp'; input.multiple = true
+                  input.onchange = (e) => addPagesToChapter(ch.id, e as any); input.click()
+                }} className="w-full py-1.5 border border-dashed border-[#3f3f46] rounded-lg bg-transparent text-[#71717a] cursor-pointer text-xs hover:border-[#a855f7] hover:text-[#c084fc]">
                   + Add Pages
                 </button>
               </div>
@@ -402,7 +388,6 @@ export default function EditSeriesPage() {
         )
       })}
 
-      {/* ─── Add New Chapter ──────────────────────────────────── */}
       {!showAddChapter ? (
         <button onClick={() => setShowAddChapter(true)}
           className="w-full py-2 border border-dashed border-[#3f3f46] rounded-lg bg-transparent text-[#71717a] cursor-pointer text-sm mb-4 hover:border-[#a855f7] hover:text-[#c084fc]">
@@ -423,11 +408,20 @@ export default function EditSeriesPage() {
                 className="w-full bg-[#27272a] border border-[#3f3f46] rounded-lg p-1.5 text-[#e4e4e7] text-sm outline-none focus:border-[#a855f7]" />
             </div>
           </div>
-          <div className="mb-2">
-            <label className="block text-[0.65rem] text-[#71717a] mb-0.5">Rating</label>
-            <div className="flex gap-1.5">
-              <button onClick={() => setNewChRating('General')} className={`px-2.5 py-1 rounded-lg cursor-pointer text-xs border ${newChRating === 'General' ? 'border-green-500 text-green-400 bg-green-500/[0.08]' : 'border-[#3f3f46] text-[#71717a] bg-transparent'}`}>General</button>
-              <button onClick={() => setNewChRating('Mature')} className={`px-2.5 py-1 rounded-lg cursor-pointer text-xs border ${newChRating === 'Mature' ? 'border-amber-500 text-amber-400 bg-amber-500/[0.08]' : 'border-[#3f3f46] text-[#71717a] bg-transparent'}`}>Mature</button>
+          <div className="flex gap-3 mb-2 flex-wrap">
+            <div>
+              <label className="block text-[0.65rem] text-[#71717a] mb-0.5">Rating</label>
+              <div className="flex gap-1.5">
+                <button onClick={() => setNewChRating('General')} className={`px-2.5 py-1 rounded-lg cursor-pointer text-xs border ${newChRating === 'General' ? 'border-green-500 text-green-400 bg-green-500/[0.08]' : 'border-[#3f3f46] text-[#71717a] bg-transparent'}`}>General</button>
+                <button onClick={() => setNewChRating('Mature')} className={`px-2.5 py-1 rounded-lg cursor-pointer text-xs border ${newChRating === 'Mature' ? 'border-amber-500 text-amber-400 bg-amber-500/[0.08]' : 'border-[#3f3f46] text-[#71717a] bg-transparent'}`}>Mature</button>
+              </div>
+            </div>
+            <div>
+              <label className="block text-[0.65rem] text-[#71717a] mb-0.5">Reading Mode</label>
+              <div className="flex gap-1.5">
+                <button onClick={() => setNewChReadingMode('webtoon')} className={`px-2.5 py-1 rounded-lg cursor-pointer text-xs border ${newChReadingMode === 'webtoon' ? 'border-[#a855f7] text-[#c084fc] bg-purple-500/10' : 'border-[#3f3f46] text-[#71717a] bg-transparent'}`}>▼ Webtoon</button>
+                <button onClick={() => setNewChReadingMode('horizontal')} className={`px-2.5 py-1 rounded-lg cursor-pointer text-xs border ${newChReadingMode === 'horizontal' ? 'border-[#a855f7] text-[#c084fc] bg-purple-500/10' : 'border-[#3f3f46] text-[#71717a] bg-transparent'}`}>◀▶ Horizontal</button>
+              </div>
             </div>
           </div>
           <div className="mb-3">
@@ -449,7 +443,6 @@ export default function EditSeriesPage() {
         </div>
       )}
 
-      {/* ─── Save / Delete ────────────────────────────────────── */}
       <div className="flex gap-2 mb-4">
         <button onClick={save} disabled={saving} className="flex-1 py-2.5 bg-[#7c3aed] text-white rounded-xl cursor-pointer text-sm font-medium border-none hover:bg-[#6d28d9] disabled:opacity-50">
           {saving ? 'Saving...' : 'Save Changes'}

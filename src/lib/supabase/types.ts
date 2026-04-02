@@ -1,6 +1,3 @@
-// Auto-generated types matching your Supabase tables
-// These give you type safety when reading/writing data
-
 export type Profile = {
   id: string;
   display_name: string;
@@ -23,6 +20,7 @@ export type Series = {
   total_views: number | null;
   total_likes: number | null;
   total_favorites: number | null;
+  reading_mode: string | null;
   created_at: string | null;
   updated_at: string | null;
 };
@@ -35,6 +33,41 @@ export type Chapter = {
   rating: string;
   page_urls: string[] | null;
   views: number | null;
+  reading_mode: string | null;
+  created_at: string | null;
+};
+
+export type Gallery = {
+  id: string;
+  title: string;
+  description: string | null;
+  image_urls: string[];
+  thumbnail_url: string | null;
+  author_id: string;
+  is_mature: boolean;
+  tags: string[] | null;
+  reading_mode: string | null;
+  total_views: number | null;
+  total_likes: number | null;
+  created_at: string | null;
+};
+
+export type GalleryComment = {
+  id: string;
+  user_id: string;
+  gallery_id: string;
+  body: string;
+  created_at: string | null;
+};
+
+export type GalleryLike = {
+  user_id: string;
+  gallery_id: string;
+};
+
+export type GalleryFavorite = {
+  user_id: string;
+  gallery_id: string;
   created_at: string | null;
 };
 
@@ -45,6 +78,8 @@ export type Comment = {
   chapter_id: string | null;
   body: string;
   likes_count: number | null;
+  parent_id: string | null;
+  edited_at: string | null;
   created_at: string | null;
 };
 
@@ -95,7 +130,6 @@ export type Report = {
   created_at: string | null;
 };
 
-// Joined types (for queries that join tables)
 export type CommentWithProfile = Comment & {
   profiles: Pick<Profile, "display_name" | "handle" | "avatar_url">;
 };
@@ -106,4 +140,8 @@ export type SeriesWithAuthor = Series & {
 
 export type NotificationWithActor = Notification & {
   actor: Pick<Profile, "display_name" | "handle" | "avatar_url"> | null;
+};
+
+export type GalleryWithAuthor = Gallery & {
+  profiles: Pick<Profile, "display_name" | "handle" | "avatar_url">;
 };

@@ -1,11 +1,12 @@
 'use client'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { useState } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { UploadModal } from './UploadModal'
 import { useToast } from './Toast'
 import { Avatar } from './Avatar'
 import { useAuth } from '@/contexts/AuthContext'
+import { createClient } from '@/lib/supabase/client'
 
 export function Navbar() {
   const pathname = usePathname()
@@ -14,17 +15,20 @@ export function Navbar() {
   const [showDropdown, setShowDropdown] = useState(false)
   const [showUpload, setShowUpload] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  const [liveResults, setLiveResults] = useState<any[]>([])
+  const [showLiveSearch, setShowLiveSearch] = useState(false)
+  const searchRef = useRef<HTMLDivElement>(null)
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const supabase = useMemo(() => createClient(), [])
 
   const { user, profile, loading, signOut } = useAuth()
   const isLoggedIn = !!user
 
-  // Base tabs always visible
   const publicTabs = [
     { href: '/', label: 'Read' },
     { href: '/categories', label: 'Categories' },
   ]
 
-  // Tabs only visible when logged in
   const privateTabs = [
     { href: '/favorites', label: 'Favorites' },
     { href: '/following', label: 'Following' },
@@ -32,8 +36,37 @@ export function Navbar() {
 
   const tabs = isLoggedIn ? [...publicTabs, ...privateTabs] : publicTabs
 
+  // Close live search when clicking outside
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
+        setShowLiveSearch(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [])
+
+  // Live search — only series in dropdown
+  function handleSearchInput(val: string) {
+    setSearchQuery(val)
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current)
+    if (!val.trim()) { setLiveResults([]); setShowLiveSearch(false); return }
+    searchTimerRef.current = setTimeout(async () => {
+      const term = `%${val.trim()}%`
+      const { data } = await supabase.from('series')
+        .select('id, title, slug, thumbnail_url')
+        .ilike('title', term)
+        .order('total_views', { ascending: false })
+        .limit(6)
+      setLiveResults(data ?? [])
+      setShowLiveSearch(true)
+    }, 250)
+  }
+
   function handleSearch(e: React.KeyboardEvent) {
     if (e.key === 'Enter' && searchQuery.trim()) {
+      setShowLiveSearch(false)
       router.push(`/search?q=${encodeURIComponent(searchQuery.trim())}`)
     }
   }
@@ -41,9 +74,6 @@ export function Navbar() {
   async function handleSignOut() {
     setShowDropdown(false)
     await signOut()
-    show('Signed out. See you soon!')
-    router.push('/')
-    router.refresh()
   }
 
   const displayName = profile?.display_name || user?.email?.split('@')[0] || 'User'
@@ -59,13 +89,37 @@ export function Navbar() {
             </div>
             <span className="text-white font-semibold text-lg md:text-3xl tracking-tight hidden sm:block">NANOTOON</span>
           </Link>
-          <div className="flex-1 relative">
+          <div className="flex-1 relative" ref={searchRef}>
             <input type="text" placeholder="Search..." value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)} onKeyDown={handleSearch}
+              onChange={e => handleSearchInput(e.target.value)} onKeyDown={handleSearch}
+              onFocus={() => { if (liveResults.length > 0) setShowLiveSearch(true) }}
               className="w-full bg-[#18181b] border border-[#3f3f46] rounded-xl md:rounded-2xl py-1.5 md:py-3 px-3 md:px-5 pl-8 md:pl-14 text-xs md:text-xl text-[#e4e4e7] outline-none focus:border-[#a855f7] placeholder:text-[#52525b]" />
             <svg className="absolute left-2.5 md:left-5 top-1/2 -translate-y-1/2 text-[#71717a]" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
               <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
             </svg>
+            {/* Live search dropdown */}
+            {showLiveSearch && liveResults.length > 0 && (
+              <div className="absolute top-full left-0 right-0 mt-1.5 bg-[#18181b] border border-[#3f3f46] rounded-xl shadow-2xl z-[300] max-h-[320px] overflow-y-auto">
+                {liveResults.map(s => (
+                  <Link key={s.id} href={`/series/${s.slug}`}
+                    onClick={() => { setShowLiveSearch(false); setSearchQuery('') }}
+                    className="flex items-center gap-2.5 px-3 py-2.5 hover:bg-[#27272a] no-underline transition-colors">
+                    {s.thumbnail_url ? (
+                      <img src={s.thumbnail_url} className="w-8 h-10 rounded object-cover shrink-0" alt="" />
+                    ) : (
+                      <div className="w-8 h-10 rounded bg-[#27272a] shrink-0 flex items-center justify-center text-xs">📖</div>
+                    )}
+                    <span className="text-sm text-[#e4e4e7] truncate">{s.title}</span>
+                  </Link>
+                ))}
+                <div className="px-3 py-2 border-t border-[#27272a]">
+                  <button onClick={() => { setShowLiveSearch(false); router.push(`/search?q=${encodeURIComponent(searchQuery.trim())}`) }}
+                    className="text-xs text-[#c084fc] bg-transparent border-none cursor-pointer">
+                    See all results for &quot;{searchQuery}&quot; →
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
           {isLoggedIn ? (
             <div className="flex items-center gap-1.5 md:gap-3 shrink-0">
