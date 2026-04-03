@@ -15,7 +15,7 @@ export async function getComments({
 
   let query = supabase
     .from("comments")
-    .select("*, profiles!comments_user_id_fkey(display_name, handle, avatar_url)")
+    .select("*, profiles(display_name, handle, avatar_url)")
     .order("created_at", { ascending: false });
 
   if (seriesId) query = query.eq("series_id", seriesId);
@@ -51,7 +51,7 @@ export async function postComment(formData: FormData) {
       series_id: seriesId || null,
       chapter_id: chapterId || null,
     })
-    .select("*, profiles!comments_user_id_fkey(display_name, handle, avatar_url)")
+    .select("*, profiles(display_name, handle, avatar_url)")
     .single();
 
   if (error) return { data: null, error: error.message };

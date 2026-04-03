@@ -30,7 +30,7 @@ export default function FollowingPage() {
 
     supabase
       .from('follows')
-      .select('*, profiles!follows_following_id_fkey(id, display_name, handle, avatar_url)')
+      .select('*, profiles(id, display_name, handle, avatar_url)')
       .eq('follower_id', user.id)
       .order('created_at', { ascending: false })
       .then(({ data }: any) => {

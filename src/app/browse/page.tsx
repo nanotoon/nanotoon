@@ -24,7 +24,7 @@ function BrowseContent() {
         setLoading(true)
         const col = mode === 'latest' ? 'updated_at' : 'total_views'
         const { data } = await supabase.from('series')
-          .select('*, profiles!series_author_id_fkey(display_name, handle, avatar_url)')
+          .select('*, profiles(display_name, handle, avatar_url)')
           .order(col, { ascending: false }).limit(limit)
         clearTimeout(timeout); if (!cancelled) { setSeries(data ?? []); setLoading(false) }
       } catch { clearTimeout(timeout); if (!cancelled) setLoading(false) }
