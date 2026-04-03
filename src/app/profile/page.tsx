@@ -40,10 +40,16 @@ export default function ProfilePage() {
     const f = e.target.files?.[0]; if (!f || !user) return
     const ext = f.name.split('.').pop()
     const path = `avatars/${user.id}.${ext}`
-    await supabase.storage.from('avatars').upload(path, f, { upsert: true })
-    const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(path)
-    await supabase.from('profiles').update({ avatar_url: publicUrl }).eq('id', user.id)
-    await refreshProfile(); show('Profile picture updated!')
+    try {
+      const fd = new FormData()
+      fd.append('file', f)
+      fd.append('path', path)
+      const res = await fetch('/api/upload', { method: 'POST', body: fd })
+      const json = await res.json()
+      if (!res.ok || json.error) { show('Upload failed: ' + (json.error || 'Unknown error')); return }
+      await supabase.from('profiles').update({ avatar_url: json.url }).eq('id', user.id)
+      await refreshProfile(); show('Profile picture updated!')
+    } catch (err: any) { show('Upload failed: ' + (err?.message || 'Unknown error')) }
   }
 
   async function delSeries(id: string) {

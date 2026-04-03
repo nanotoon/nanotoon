@@ -53,14 +53,14 @@ export default function ReaderPage() {
     const timeout = setTimeout(() => { if (!c) setLoading(false) }, 10000)
     async function load() {
       try {
-        const { data: s } = await supabase.from('series').select('*, profiles(display_name, handle, avatar_url)').eq('slug', slug).single()
+        const { data: s } = await supabase.from('series').select('*, profiles!series_author_id_fkey(display_name, handle, avatar_url)').eq('slug', slug).single()
         if (!s || c) { setLoading(false); return }
         setSeries(s)
         const { data: chs } = await supabase.from('chapters').select('*').eq('series_id', s.id).order('chapter_number', { ascending: true })
         if (c) return
         setChapters(chs ?? [])
         if (chs?.length) { setCurrentCh(chs[chs.length - 1].chapter_number); setChapterViews(chs[chs.length - 1].views ?? 0) }
-        const { data: sc } = await supabase.from('comments').select('*, profiles(display_name, handle, avatar_url)').eq('series_id', s.id).is('chapter_id', null).order('created_at', { ascending: false })
+        const { data: sc } = await supabase.from('comments').select('*, profiles!comments_user_id_fkey(display_name, handle, avatar_url)').eq('series_id', s.id).is('chapter_id', null).order('created_at', { ascending: false })
         if (!c) setSeriesComments(sc ?? [])
         if (user) {
           const [lk, fv, fw] = await Promise.all([
@@ -88,7 +88,7 @@ export default function ReaderPage() {
     const ch = chapters.find(c => c.chapter_number === currentCh)
     if (!ch) return
     setChapterViews(ch.views ?? 0)
-    supabase.from('comments').select('*, profiles(display_name, handle, avatar_url)').eq('chapter_id', ch.id).order('created_at', { ascending: false })
+    supabase.from('comments').select('*, profiles!comments_user_id_fkey(display_name, handle, avatar_url)').eq('chapter_id', ch.id).order('created_at', { ascending: false })
       .then(({ data }: any) => setComments(data ?? []))
     supabase.from('chapters').update({ views: (ch.views ?? 0) + 1 }).eq('id', ch.id).then(() => {
       setChapterViews(v => v + 1)
@@ -139,7 +139,7 @@ export default function ReaderPage() {
       user_id: user.id, body: text.trim(), series_id: series.id,
       chapter_id: isSeries ? null : ch?.id || null,
       parent_id: parentId || null,
-    }).select('*, profiles(display_name, handle, avatar_url)').single()
+    }).select('*, profiles!comments_user_id_fkey(display_name, handle, avatar_url)').single()
     if (error) { show('Failed to post: ' + error.message); return }
     if (data) {
       if (isSeries) { setSeriesComments(prev => [data, ...prev]); setSeriesCommentText('') }

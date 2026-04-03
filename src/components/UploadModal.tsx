@@ -8,6 +8,17 @@ const MAX_FILE = 5 * 1024 * 1024
 const MAX_TOTAL = 30 * 1024 * 1024
 const MATURE_TEXT = "Violence & Dark Themes: Intense graphic violence and realistic blood are permitted in Mature-tagged chapters. Content solely depicting sadistic torture without narrative purpose is prohibited.\n\nNudity — Non-sexual nudity is allowed if genitalia are fully obscured/censored. Pornographic content is strictly prohibited.\n\nProhibited:\n• Sexual content involving minors — zero tolerance\n• Instructions for making drugs, explosives, or weapons\n• Content promoting self-harm or suicide\n• Malware, scams, or phishing\n• Content inciting real-world violence"
 
+// ─── R2 upload helper ────────────────────────────────────────
+async function uploadToR2(file: File, path: string): Promise<string> {
+  const fd = new FormData()
+  fd.append('file', file)
+  fd.append('path', path)
+  const res = await fetch('/api/upload', { method: 'POST', body: fd })
+  const json = await res.json()
+  if (!res.ok || json.error) throw new Error(json.error || 'Upload failed')
+  return json.url
+}
+
 function MatureTip({ mobile }: { mobile: boolean }) {
   const [open, setOpen] = useState(false)
   if (mobile) return (<>
@@ -92,22 +103,10 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
     const r = new FileReader(); r.onload = ev => setThumbPreview(ev.target?.result as string); r.readAsDataURL(f)
   }
 
-  async function withTimeout<T>(promise: PromiseLike<T>, ms: number, label: string): Promise<T> {
-    let timer: ReturnType<typeof setTimeout>
-    const timeout = new Promise<never>((_, reject) => {
-      timer = setTimeout(() => reject(new Error(label + ' timed out after ' + (ms/1000) + 's — check your Supabase connection')), ms)
-    })
-    try { return await Promise.race([Promise.resolve(promise), timeout]) }
-    finally { clearTimeout(timer!) }
-  }
-
   async function ensureProfile() {
     if (!user) throw new Error('Not logged in')
     try {
-      const { data, error } = await withTimeout(
-        supabase.from('profiles').select('id').eq('id', user.id).maybeSingle(),
-        15000, 'Profile check'
-      ) as { data: { id: string } | null; error: { message: string; code?: string } | null }
+      const { data, error } = await supabase.from('profiles').select('id').eq('id', user.id).maybeSingle()
       if (error) console.warn('Profile select error (will try insert):', error.message)
       if (data) return
     } catch (err: any) {
@@ -115,10 +114,7 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
     }
     const dn = user.user_metadata?.display_name || user.user_metadata?.full_name || user.email?.split('@')[0] || 'Creator'
     const h = (user.user_metadata?.handle || user.email?.split('@')[0]?.replace(/[^a-zA-Z0-9_]/g, '') || 'user_' + user.id.slice(0, 8)).toLowerCase()
-    const { error } = await withTimeout(
-      supabase.from('profiles').insert({ id: user.id, display_name: dn, handle: h }),
-      15000, 'Profile create'
-    ) as { data: null; error: { message: string; code?: string } | null }
+    const { error } = await supabase.from('profiles').insert({ id: user.id, display_name: dn, handle: h })
     if (error && !error.message.includes('duplicate') && !error.code?.includes('23505')) {
       throw new Error('Profile setup failed: ' + error.message)
     }
@@ -150,9 +146,11 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
         setProgress('Uploading thumbnail...')
         const ext = thumbFile.name.split('.').pop() || 'jpg'
         const path = 'thumbnails/' + user!.id + '/' + Date.now() + '.' + ext
-        const { error } = await supabase.storage.from('series-assets').upload(path, thumbFile, { upsert: true })
-        if (error) onToast('Thumbnail skipped: ' + error.message)
-        else thumbnailUrl = supabase.storage.from('series-assets').getPublicUrl(path).data.publicUrl
+        try {
+          thumbnailUrl = await uploadToR2(thumbFile, path)
+        } catch (e: any) {
+          onToast('Thumbnail skipped: ' + e.message)
+        }
       }
       const slug = seriesTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') + '-' + Date.now().toString(36)
       const { data: ns, error: sErr } = await supabase.from('series').insert({
@@ -167,9 +165,8 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
       setProgress('Uploading page ' + (i + 1) + '/' + files.length + '...')
       const f = files[i], ext = f.name.split('.').pop() || 'jpg'
       const path = 'chapters/' + seriesId + '/' + chapterNumber + '/' + String(i + 1).padStart(3, '0') + '.' + ext
-      const { error } = await supabase.storage.from('series-assets').upload(path, f, { upsert: true })
-      if (error) throw new Error('Page ' + (i + 1) + ' failed: ' + error.message)
-      pageUrls.push(supabase.storage.from('series-assets').getPublicUrl(path).data.publicUrl)
+      const url = await uploadToR2(f, path)
+      pageUrls.push(url)
     }
     setProgress('Saving chapter...')
     const { error: chErr } = await supabase.from('chapters').insert({
@@ -187,16 +184,14 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
       setProgress('Uploading image ' + (i + 1) + '/' + files.length + '...')
       const f = files[i], ext = f.name.split('.').pop() || 'jpg'
       const path = 'gallery/' + user!.id + '/' + Date.now() + '_' + i + '.' + ext
-      const { error } = await supabase.storage.from('series-assets').upload(path, f, { upsert: true })
-      if (error) throw new Error('Image ' + (i + 1) + ' failed: ' + error.message)
-      imageUrls.push(supabase.storage.from('series-assets').getPublicUrl(path).data.publicUrl)
+      const url = await uploadToR2(f, path)
+      imageUrls.push(url)
     }
     let thumbnailUrl: string | null = null
     if (files.length > 1 && thumbFile) {
       const ext = thumbFile.name.split('.').pop() || 'jpg'
       const path = 'gallery/' + user!.id + '/thumb_' + Date.now() + '.' + ext
-      const { error } = await supabase.storage.from('series-assets').upload(path, thumbFile, { upsert: true })
-      if (!error) thumbnailUrl = supabase.storage.from('series-assets').getPublicUrl(path).data.publicUrl
+      try { thumbnailUrl = await uploadToR2(thumbFile, path) } catch { /* skip */ }
     }
     setProgress('Saving...')
     const { error } = await supabase.from('gallery').insert({

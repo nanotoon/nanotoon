@@ -28,7 +28,7 @@ export default function FavoritesPage() {
 
     supabase
       .from('favorites')
-      .select('*, series(*, profiles(display_name, handle, avatar_url))')
+      .select('*, series(*, profiles!series_author_id_fkey(display_name, handle, avatar_url))')
       .eq('user_id', user.id)
       .order('created_at', { ascending: false })
       .then(({ data }: any) => {

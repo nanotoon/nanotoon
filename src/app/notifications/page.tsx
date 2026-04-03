@@ -25,7 +25,7 @@ export default function NotificationsPage() {
     let cancelled = false
     const timeout = setTimeout(() => { if (!cancelled) setLoading(false) }, 8000)
     supabase.from('notifications')
-      .select('*, actor:profiles(display_name, handle, avatar_url)')
+      .select('*, actor:profiles!notifications_actor_id_fkey(display_name, handle, avatar_url)')
       .eq('user_id', user.id).order('created_at', { ascending: false }).limit(50)
       .then(({ data }: any) => {
         clearTimeout(timeout)

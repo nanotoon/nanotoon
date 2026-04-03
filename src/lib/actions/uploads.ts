@@ -1,6 +1,24 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+// @ts-ignore — binding provided by wrangler at runtime
+import { getCloudflareContext } from "@opennextjs/cloudflare";
+
+const R2_PUBLIC_URL = "https://pub-6d31092e1f8446afba2712c91fc6ff8d.r2.dev";
+
+async function uploadToR2(file: File, filePath: string): Promise<string> {
+  const { env } = await getCloudflareContext();
+  const bucket = (env as any).R2_BUCKET;
+
+  if (!bucket) throw new Error("R2 bucket not available — check wrangler.toml R2 binding");
+
+  const arrayBuffer = await file.arrayBuffer();
+  await bucket.put(filePath, arrayBuffer, {
+    httpMetadata: { contentType: file.type },
+  });
+
+  return `${R2_PUBLIC_URL}/${filePath}`;
+}
 
 // ─── Upload Series Thumbnail ────────────────────────────────────
 export async function uploadThumbnail(formData: FormData) {
@@ -18,17 +36,12 @@ export async function uploadThumbnail(formData: FormData) {
   const ext = file.name.split(".").pop();
   const filePath = `thumbnails/${user.id}/${Date.now()}.${ext}`;
 
-  const { error: uploadError } = await supabase.storage
-    .from("series-assets")
-    .upload(filePath, file, { upsert: true });
-
-  if (uploadError) return { url: null, error: uploadError.message };
-
-  const {
-    data: { publicUrl },
-  } = supabase.storage.from("series-assets").getPublicUrl(filePath);
-
-  return { url: publicUrl, error: null };
+  try {
+    const url = await uploadToR2(file, filePath);
+    return { url, error: null };
+  } catch (e: any) {
+    return { url: null, error: e.message };
+  }
 }
 
 // ─── Upload Chapter Pages (multiple images) ─────────────────────
@@ -54,19 +67,12 @@ export async function uploadChapterPages(formData: FormData) {
     const ext = file.name.split(".").pop();
     const filePath = `chapters/${seriesId}/${chapterNumber}/${String(i + 1).padStart(3, "0")}.${ext}`;
 
-    const { error: uploadError } = await supabase.storage
-      .from("series-assets")
-      .upload(filePath, file, { upsert: true });
-
-    if (uploadError) {
-      return { urls: uploadedUrls, error: `Failed on page ${i + 1}: ${uploadError.message}` };
+    try {
+      const url = await uploadToR2(file, filePath);
+      uploadedUrls.push(url);
+    } catch (e: any) {
+      return { urls: uploadedUrls, error: `Failed on page ${i + 1}: ${e.message}` };
     }
-
-    const {
-      data: { publicUrl },
-    } = supabase.storage.from("series-assets").getPublicUrl(filePath);
-
-    uploadedUrls.push(publicUrl);
   }
 
   return { urls: uploadedUrls, error: null };

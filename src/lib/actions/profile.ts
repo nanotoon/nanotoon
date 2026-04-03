@@ -88,23 +88,31 @@ export async function uploadAvatar(formData: FormData) {
   const ext = file.name.split(".").pop();
   const filePath = `avatars/${user.id}.${ext}`;
 
-  const { error: uploadError } = await supabase.storage
-    .from("avatars")
-    .upload(filePath, file, { upsert: true });
+  try {
+    // @ts-ignore — binding provided by wrangler at runtime
+    const { getCloudflareContext } = await import("@opennextjs/cloudflare");
+    const { env } = await getCloudflareContext();
+    const bucket = (env as any).R2_BUCKET;
 
-  if (uploadError) return { url: null, error: uploadError.message };
+    if (!bucket) return { url: null, error: "R2 bucket not available" };
 
-  const {
-    data: { publicUrl },
-  } = supabase.storage.from("avatars").getPublicUrl(filePath);
+    const arrayBuffer = await file.arrayBuffer();
+    await bucket.put(filePath, arrayBuffer, {
+      httpMetadata: { contentType: file.type },
+    });
 
-  // Update the profile with the new avatar URL
-  await supabase
-    .from("profiles")
-    .update({ avatar_url: publicUrl })
-    .eq("id", user.id);
+    const publicUrl = `https://pub-6d31092e1f8446afba2712c91fc6ff8d.r2.dev/${filePath}`;
 
-  revalidatePath("/profile");
-  revalidatePath("/settings");
-  return { url: publicUrl, error: null };
+    // Update the profile with the new avatar URL
+    await supabase
+      .from("profiles")
+      .update({ avatar_url: publicUrl })
+      .eq("id", user.id);
+
+    revalidatePath("/profile");
+    revalidatePath("/settings");
+    return { url: publicUrl, error: null };
+  } catch (e: any) {
+    return { url: null, error: e.message };
+  }
 }

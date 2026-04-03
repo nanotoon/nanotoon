@@ -91,10 +91,15 @@ export default function EditSeriesPage() {
     if (newThumbFile) {
       const ext = newThumbFile.name.split('.').pop()
       const path = `thumbnails/${user.id}/${Date.now()}.${ext}`
-      const { error: upErr } = await supabase.storage.from('series-assets').upload(path, newThumbFile, { upsert: true })
-      if (upErr) { show('Thumbnail upload failed: ' + upErr.message); setSaving(false); return }
-      const { data: { publicUrl } } = supabase.storage.from('series-assets').getPublicUrl(path)
-      thumbnailUrl = publicUrl
+      try {
+        const fd = new FormData()
+        fd.append('file', newThumbFile)
+        fd.append('path', path)
+        const res = await fetch('/api/upload', { method: 'POST', body: fd })
+        const json = await res.json()
+        if (!res.ok || json.error) { show('Thumbnail upload failed: ' + (json.error || 'Unknown error')); setSaving(false); return }
+        thumbnailUrl = json.url
+      } catch (e: any) { show('Thumbnail upload failed: ' + e.message); setSaving(false); return }
     }
     const { error } = await supabase.from('series').update({
       title, description: desc, format, genres: Array.from(genres),
@@ -206,10 +211,15 @@ export default function EditSeriesPage() {
       const ext = file.name.split('.').pop()
       const pageNum = existingUrls.length + i + 1
       const path = `chapters/${series.id}/${ch.chapter_number}/${String(pageNum).padStart(3, '0')}_${Date.now()}.${ext}`
-      const { error } = await supabase.storage.from('series-assets').upload(path, file, { upsert: true })
-      if (error) { show(`Page ${i + 1} failed: ${error.message}`); return }
-      const { data: { publicUrl } } = supabase.storage.from('series-assets').getPublicUrl(path)
-      newUrls.push(publicUrl)
+      try {
+        const fd = new FormData()
+        fd.append('file', file)
+        fd.append('path', path)
+        const res = await fetch('/api/upload', { method: 'POST', body: fd })
+        const json = await res.json()
+        if (!res.ok || json.error) { show(`Page ${i + 1} failed: ${json.error || 'Upload error'}`); return }
+        newUrls.push(json.url)
+      } catch (e: any) { show(`Page ${i + 1} failed: ${e.message}`); return }
     }
 
     const allUrls = [...existingUrls, ...newUrls]
@@ -228,10 +238,15 @@ export default function EditSeriesPage() {
       const file = newChFiles[i]
       const ext = file.name.split('.').pop()
       const path = `chapters/${series.id}/${newChNumber}/${String(i + 1).padStart(3, '0')}.${ext}`
-      const { error } = await supabase.storage.from('series-assets').upload(path, file, { upsert: true })
-      if (error) { show(`Page ${i + 1} failed: ${error.message}`); setAddingChapter(false); return }
-      const { data: { publicUrl } } = supabase.storage.from('series-assets').getPublicUrl(path)
-      pageUrls.push(publicUrl)
+      try {
+        const fd = new FormData()
+        fd.append('file', file)
+        fd.append('path', path)
+        const res = await fetch('/api/upload', { method: 'POST', body: fd })
+        const json = await res.json()
+        if (!res.ok || json.error) { show(`Page ${i + 1} failed: ${json.error || 'Upload error'}`); setAddingChapter(false); return }
+        pageUrls.push(json.url)
+      } catch (e: any) { show(`Page ${i + 1} failed: ${e.message}`); setAddingChapter(false); return }
     }
     const { data: ch, error } = await supabase.from('chapters').insert({
       series_id: series.id, chapter_number: newChNumber, title: newChTitle.trim(),
