@@ -7,8 +7,6 @@ import { getCloudflareContext } from "@opennextjs/cloudflare";
 
 const R2_PUBLIC_URL = "https://pub-6d31092e1f8446afba2712c91fc6ff8d.r2.dev";
 
-export const runtime = "edge";
-
 export async function POST(request: NextRequest) {
   // ── Auth check ──────────────────────────────────────────────
   try {
