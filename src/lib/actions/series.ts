@@ -21,7 +21,7 @@ export async function getSeries({
 
   let query = supabase
     .from("series")
-    .select("*, profiles(display_name, handle, avatar_url)", { count: "exact" })
+    .select("*, profiles!series_author_id_fkey(display_name, handle, avatar_url)", { count: "exact" })
     .order("created_at", { ascending: false })
     .range(offset, offset + limit - 1);
 
@@ -47,7 +47,7 @@ export async function getSeriesBySlug(slug: string) {
 
   const { data, error } = await supabase
     .from("series")
-    .select("*, profiles(display_name, handle, avatar_url)")
+    .select("*, profiles!series_author_id_fkey(display_name, handle, avatar_url)")
     .eq("slug", slug)
     .single();
 

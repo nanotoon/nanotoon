@@ -27,7 +27,7 @@ export default function GalleryPage() {
         // Try with profile join first (use explicit FK)
         let result = await supabase
           .from('gallery')
-          .select('*, profiles(display_name, handle, avatar_url)')
+          .select('*, profiles!gallery_author_id_fkey(display_name, handle, avatar_url)')
           .order('created_at', { ascending: false })
           .limit(limit)
 
@@ -36,7 +36,7 @@ export default function GalleryPage() {
           console.warn('Gallery query with explicit FK failed, trying implicit:', result.error.message)
           result = await supabase
             .from('gallery')
-            .select('*, profiles(display_name, handle, avatar_url)')
+            .select('*, profiles!gallery_author_id_fkey(display_name, handle, avatar_url)')
             .order('created_at', { ascending: false })
             .limit(limit)
         }

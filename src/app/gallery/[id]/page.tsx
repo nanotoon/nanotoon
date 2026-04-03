@@ -23,11 +23,11 @@ export default function GalleryDetailPage() {
   useEffect(() => {
     let c = false
     async function load() {
-      const { data } = await supabase.from('gallery').select('*, profiles(display_name, handle, avatar_url)').eq('id', id).single()
+      const { data } = await supabase.from('gallery').select('*, profiles!gallery_author_id_fkey(display_name, handle, avatar_url)').eq('id', id).single()
       if (!c && data) {
         setItem(data)
         await supabase.from('gallery').update({ total_views: (data.total_views??0)+1 }).eq('id', id)
-        const { data: cmts } = await supabase.from('gallery_comments').select('*, profiles(display_name, handle, avatar_url)').eq('gallery_id', id).order('created_at', { ascending: false })
+        const { data: cmts } = await supabase.from('gallery_comments').select('*, profiles!gallery_comments_user_id_fkey(display_name, handle, avatar_url)').eq('gallery_id', id).order('created_at', { ascending: false })
         if (!c) setComments(cmts ?? [])
         if (user) { const { data: lk } = await supabase.from('gallery_likes').select('*').eq('user_id', user.id).eq('gallery_id', id).maybeSingle(); if (!c) setLiked(!!lk) }
       }
@@ -44,7 +44,7 @@ export default function GalleryDetailPage() {
 
   async function postComment() {
     if (!user){show('Sign in!');return}; if(!cText.trim()){show('Write something!');return}
-    const {data,error}=await supabase.from('gallery_comments').insert({user_id:user.id,gallery_id:id,body:cText.trim()}).select('*, profiles(display_name, handle, avatar_url)').single()
+    const {data,error}=await supabase.from('gallery_comments').insert({user_id:user.id,gallery_id:id,body:cText.trim()}).select('*, profiles!gallery_comments_user_id_fkey(display_name, handle, avatar_url)').single()
     if (error){show('Failed: '+error.message);return}
     if (data){setComments(p=>[data,...p]);setCText('');show('Posted!')}
   }

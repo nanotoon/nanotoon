@@ -4,11 +4,12 @@ import { NextResponse, type NextRequest } from "next/server";
 export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
 
+  // 1. CRASH PREVENTION: If variables are missing, don't even try Supabase
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
   if (!supabaseUrl || !supabaseKey) {
-    return supabaseResponse;
+    return supabaseResponse; 
   }
 
   try {
@@ -29,11 +30,8 @@ export async function middleware(request: NextRequest) {
       },
     });
 
-    // Use getSession() — reads JWT from cookie locally, zero network calls.
-    // getUser() makes a live network round-trip to Supabase on every page load
-    // which was blocking rendering for logged-in users and causing "loading forever".
-    const { data: { session } } = await supabase.auth.getSession();
-    const user = session?.user ?? null;
+    // 2. Wrap user check in try/catch to prevent 500 errors
+    const { data: { user } } = await supabase.auth.getUser();
 
     const protectedPaths = ["/profile", "/settings", "/favorites", "/followers", "/following", "/notifications"];
     const isProtected = protectedPaths.some((p) => request.nextUrl.pathname.startsWith(p));
@@ -51,6 +49,7 @@ export async function middleware(request: NextRequest) {
     }
 
   } catch (error) {
+    // 3. SILENT FAIL: If Supabase fails, just show the page. Better than a 500 error.
     console.error("Middleware Error:", error);
     return supabaseResponse;
   }

@@ -42,7 +42,7 @@ export function useSeries({
     setLoading(true);
     let query = supabase
       .from("series")
-      .select("*, profiles(display_name, handle, avatar_url)")
+      .select("*, profiles!series_author_id_fkey(display_name, handle, avatar_url)")
       .order(orderBy, { ascending: false })
       .limit(limit);
 

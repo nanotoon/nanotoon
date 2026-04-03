@@ -88,7 +88,7 @@ export async function getFollowers(userId?: string) {
 
   const { data, error } = await supabase
     .from("follows")
-    .select("*, profiles(id, display_name, handle, avatar_url)")
+    .select("*, profiles!follows_follower_id_fkey(id, display_name, handle, avatar_url)")
     .eq("following_id", targetId)
     .order("created_at", { ascending: false });
 
@@ -111,7 +111,7 @@ export async function getFollowing(userId?: string) {
 
   const { data, error } = await supabase
     .from("follows")
-    .select("*, profiles(id, display_name, handle, avatar_url)")
+    .select("*, profiles!follows_following_id_fkey(id, display_name, handle, avatar_url)")
     .eq("follower_id", targetId)
     .order("created_at", { ascending: false });
 

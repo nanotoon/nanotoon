@@ -14,7 +14,7 @@ export default function FollowersPage() {
   useEffect(() => {
     if (!user) { setLoading(false); return }
     let c = false
-    supabase.from('follows').select('*, profiles(id, display_name, handle, avatar_url)')
+    supabase.from('follows').select('*, profiles!follows_follower_id_fkey(id, display_name, handle, avatar_url)')
       .eq('following_id', user.id).order('created_at', { ascending: false })
       .then(({ data }: any) => { if (!c) { setFollowers(data ?? []); setLoading(false) } })
     return () => { c = true }
