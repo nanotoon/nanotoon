@@ -3,7 +3,6 @@ import { useState, useEffect, useMemo, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { SeriesCard } from '@/components/SeriesCard'
-import { GalleryCard } from '@/components/GalleryCard'
 import { categories } from '@/data/mock'
 import { createClient } from '@/lib/supabase/client'
 
@@ -14,25 +13,24 @@ function SearchContent() {
   const [genreFilter, setGenreFilter] = useState('All')
   const [formatFilter, setFormatFilter] = useState('All')
   const [results, setResults] = useState<any[]>([])
-  const [galleryResults, setGalleryResults] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    if (!query.trim()) { setResults([]); setGalleryResults([]); setLoading(false); return }
+    if (!query.trim()) { setResults([]); setLoading(false); return }
     let cancelled = false
     const timeout = setTimeout(() => { if (!cancelled) setLoading(false) }, 8000)
     async function search() {
       setLoading(true)
       const searchTerm = `%${query.trim()}%`
-
-      // Search series
       let q = supabase.from('series')
         .select('*, profiles(display_name, handle, avatar_url)')
         .or(`title.ilike.${searchTerm},description.ilike.${searchTerm}`)
         .order('total_views', { ascending: false })
         .limit(50)
+      
       if (genreFilter !== 'All') q = q.contains('genres', [genreFilter])
       if (formatFilter !== 'All') q = q.eq('format', formatFilter)
+      
       const { data } = await q
 
       let extraResults: any[] = []
@@ -41,20 +39,15 @@ function SearchContent() {
           .select('*, profiles(display_name, handle, avatar_url)')
           .contains('genres', [query.trim()])
           .order('total_views', { ascending: false }).limit(20)
+        
         const { data: tagMatch } = await supabase.from('series')
           .select('*, profiles(display_name, handle, avatar_url)')
           .contains('tags', [query.trim()])
           .order('total_views', { ascending: false }).limit(20)
+        
         const existingIds = new Set((data ?? []).map((s: any) => s.id))
         extraResults = [...(genreMatch ?? []), ...(tagMatch ?? [])].filter(s => !existingIds.has(s.id))
       }
-
-      // Search gallery
-      const { data: gData } = await supabase.from('gallery')
-        .select('*, profiles(display_name, handle, avatar_url)')
-        .or(`title.ilike.${searchTerm},description.ilike.${searchTerm}`)
-        .order('created_at', { ascending: false })
-        .limit(30)
 
       if (!cancelled) {
         const seen = new Set<string>()
@@ -64,7 +57,6 @@ function SearchContent() {
         })
         clearTimeout(timeout)
         setResults(all)
-        setGalleryResults(gData ?? [])
         setLoading(false)
       }
     }
@@ -96,30 +88,15 @@ function SearchContent() {
       </div>
       {loading ? <p className="text-center py-12 text-[#52525b] text-sm">Searching...</p> : (
         <>
-          {/* Series Section */}
-          <h3 className="text-sm font-semibold text-[#c084fc] mb-2">Series</h3>
           <p className="text-xs text-[#71717a] mb-3">{results.length} result{results.length !== 1 ? 's' : ''}</p>
           {results.length > 0 ? (
-            <div className="grid gap-2.5 md:gap-4 grid-cols-3 md:grid-cols-9 mb-8">
+            <div className="grid gap-2.5 md:gap-4 grid-cols-3 md:grid-cols-9">
               {results.map((s, i) => (
                 <SeriesCard key={s.id} title={s.title} slug={s.slug} author={s.profiles?.display_name || 'Unknown'} thumbnailUrl={s.thumbnail_url}
                   latestChapter={0} rating="General" format={s.format} index={i} views={s.total_views} likes={s.total_likes} favorites={s.total_favorites} />
               ))}
             </div>
-          ) : <p className="text-center py-8 text-[#71717a] text-sm mb-8">No series match your search.</p>}
-
-          {/* Gallery Section */}
-          {galleryResults.length > 0 && (
-            <>
-              <h3 className="text-sm font-semibold text-[#c084fc] mb-2">Gallery</h3>
-              <p className="text-xs text-[#71717a] mb-3">{galleryResults.length} result{galleryResults.length !== 1 ? 's' : ''}</p>
-              <div className="grid gap-2.5 md:gap-4 grid-cols-3 md:grid-cols-9">
-                {galleryResults.map((g, i) => (
-                  <GalleryCard key={g.id} item={g} index={i} />
-                ))}
-              </div>
-            </>
-          )}
+          ) : <p className="text-center py-14 text-[#71717a]">No series match your search.</p>}
         </>
       )}
     </div>

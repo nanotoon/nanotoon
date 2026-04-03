@@ -1,7 +1,6 @@
 'use client'
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { SeriesCard } from '@/components/SeriesCard'
-import { GalleryCard } from '@/components/GalleryCard'
 import { Avatar } from '@/components/Avatar'
 import { ShareModal } from '@/components/ShareModal'
 import { useToast } from '@/components/Toast'
@@ -17,7 +16,6 @@ export default function ProfilePage() {
   const supabase = useMemo(() => createClient(), [])
   const [showShare, setShowShare] = useState(false)
   const [mySeries, setMySeries] = useState<any[]>([])
-  const [myGallery, setMyGallery] = useState<any[]>([])
   const [followerCount, setFollowerCount] = useState(0)
   const [followingCount, setFollowingCount] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -32,12 +30,11 @@ export default function ProfilePage() {
       supabase.from('series').select('*').eq('author_id', user.id).order('created_at', { ascending: false }),
       supabase.from('follows').select('*', { count: 'exact', head: true }).eq('following_id', user.id),
       supabase.from('follows').select('*', { count: 'exact', head: true }).eq('follower_id', user.id),
-      supabase.from('gallery').select('*, profiles(display_name, handle, avatar_url)').eq('author_id', user.id).order('created_at', { ascending: false }),
-    ]).then(([s, fr, fg, g]) => {
-      if (!c) { setMySeries(s.data ?? []); setFollowerCount(fr.count ?? 0); setFollowingCount(fg.count ?? 0); setMyGallery(g.data ?? []); setLoading(false) }
+    ]).then(([s, fr, fg]) => {
+      if (!c) { setMySeries(s.data ?? []); setFollowerCount(fr.count ?? 0); setFollowingCount(fg.count ?? 0); setLoading(false) }
     })
     return () => { c = true; clearTimeout(timeout) }
-  }, [user, supabase, authLoading])
+  }, [user, supabase])
 
   async function handlePfp(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0]; if (!f || !user) return
@@ -53,12 +50,6 @@ export default function ProfilePage() {
     if (!confirm('Delete this series?')) return
     await supabase.from('series').delete().eq('id', id)
     setMySeries(prev => prev.filter(s => s.id !== id)); show('Series deleted')
-  }
-
-  async function delGallery(id: string) {
-    if (!confirm('Delete this gallery artwork?')) return
-    await supabase.from('gallery').delete().eq('id', id)
-    setMyGallery(prev => prev.filter(g => g.id !== id)); show('Gallery artwork deleted')
   }
 
   const dn = profile?.display_name || 'User'; const h = profile?.handle || 'user'
@@ -97,13 +88,11 @@ export default function ProfilePage() {
           <div key={l} className="bg-[#18181b] rounded-2xl p-4 text-center"><div className="text-xl font-bold text-[#c084fc]">{n}</div><div className="text-[#71717a] text-xs mt-0.5">{l}</div></div>
         ))}
       </div>
-
-      {/* My Series */}
       <h3 className="font-semibold mb-3 text-sm">My Series</h3>
       {loading ? <p className="text-[#52525b] text-sm">Loading...</p> : mySeries.length === 0 ? (
-        <p className="text-[#71717a] text-sm mb-6">No series yet. Upload your first one!</p>
+        <p className="text-[#71717a] text-sm">No series yet. Upload your first one!</p>
       ) : (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {mySeries.map((s, i) => (
             <div key={s.id}>
               <SeriesCard title={s.title} slug={s.slug} author={dn} thumbnailUrl={s.thumbnail_url} latestChapter={0} rating="General" format={s.format} index={i} views={s.total_views} likes={s.total_likes} favorites={s.total_favorites} />
@@ -115,25 +104,6 @@ export default function ProfilePage() {
           ))}
         </div>
       )}
-
-      {/* My Gallery Artworks */}
-      {myGallery.length > 0 && (
-        <>
-          <h3 className="font-semibold mb-3 text-sm">My Gallery Artworks</h3>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {myGallery.map((g, i) => (
-              <div key={g.id}>
-                <GalleryCard item={g} index={i} />
-                <div className="flex gap-1.5 mt-1.5">
-                  <Link href={`/gallery/${g.id}`} className="flex-1 py-1 bg-[#27272a] border border-[#3f3f46] rounded-lg text-[0.7rem] text-[#c084fc] text-center hover:border-[#a855f7] no-underline">View</Link>
-                  <button onClick={() => delGallery(g.id)} className="flex-1 py-1 bg-[#27272a] border border-[#3f3f46] rounded-lg text-[0.7rem] text-[#f87171] hover:border-[#ef4444] cursor-pointer">Delete</button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </>
-      )}
-
       {showShare && <ShareModal title={`@${h} on NANOTOON`} url={`${typeof window !== 'undefined' ? window.location.origin : ''}/profile`} onClose={() => setShowShare(false)} />}
     </div>
   )

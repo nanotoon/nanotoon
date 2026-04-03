@@ -13,22 +13,42 @@ export default function FollowingPage() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    // Wait for auth to finish loading before doing anything
     if (authLoading) return
-    if (!user) { setLoading(false); return }
-    let cancelled = false
-    const timeout = setTimeout(() => { if (!cancelled) setLoading(false) }, 8000)
 
-    supabase.from('follows')
+    if (!user) {
+      setLoading(false)
+      return
+    }
+
+    let cancelled = false
+
+    // Hard timeout — never spin forever
+    const timeout = setTimeout(() => {
+      if (!cancelled) setLoading(false)
+    }, 8000)
+
+    supabase
+      .from('follows')
       .select('*, profiles(id, display_name, handle, avatar_url)')
       .eq('follower_id', user.id)
       .order('created_at', { ascending: false })
       .then(({ data }: any) => {
         clearTimeout(timeout)
-        if (!cancelled) { setFollowing(data ?? []); setLoading(false) }
+        if (!cancelled) {
+          setFollowing(data ?? [])
+          setLoading(false)
+        }
       })
-      .catch(() => { clearTimeout(timeout); if (!cancelled) setLoading(false) })
+      .catch(() => {
+        clearTimeout(timeout)
+        if (!cancelled) setLoading(false)
+      })
 
-    return () => { cancelled = true; clearTimeout(timeout) }
+    return () => {
+      cancelled = true
+      clearTimeout(timeout)
+    }
   }, [user, authLoading, supabase])
 
   async function unfollow(targetId: string, name: string) {

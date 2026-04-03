@@ -4,39 +4,22 @@ import { GENRES_ALL } from '@/data/mock'
 import { useAuth } from '@/contexts/AuthContext'
 import { createClient } from '@/lib/supabase/client'
 
-const MAX_FILE_SIZE = 5 * 1024 * 1024 // 5 MB per image
-const MAX_TOTAL_SIZE = 30 * 1024 * 1024 // 30 MB total
-const MATURE_TOOLTIP_TEXT = `Violence & Dark Themes: We support high-stakes storytelling. Intense graphic violence and realistic blood are permitted in Mature-tagged chapters. However, content that exists solely to depict sadistic torture without narrative purpose, or content that mimics real-world 'snuff,' is prohibited to comply with safety regulations.\n\nNudity & Mature Content — Non-sexual nudity is allowed, provided that genitalia are fully obscured or censored. Pornographic content is strictly prohibited.\n\nProhibited Content:\n• Sexual content involving minors — zero tolerance\n• Instructions for making drugs, explosives, or weapons\n• Content that promotes self-harm or suicide\n• Malware, scams, or phishing\n• Content that incites real-world violence`
+const MAX_FILE = 5 * 1024 * 1024
+const MAX_TOTAL = 30 * 1024 * 1024
+const MATURE_TEXT = "Violence & Dark Themes: Intense graphic violence and realistic blood are permitted in Mature-tagged chapters. Content solely depicting sadistic torture without narrative purpose is prohibited.\n\nNudity — Non-sexual nudity is allowed if genitalia are fully obscured/censored. Pornographic content is strictly prohibited.\n\nProhibited:\n\u2022 Sexual content involving minors — zero tolerance\n\u2022 Instructions for making drugs, explosives, or weapons\n\u2022 Content promoting self-harm or suicide\n\u2022 Malware, scams, or phishing\n\u2022 Content inciting real-world violence"
 
-function MatureTooltip({ isMobile }: { isMobile: boolean }) {
-  const [show, setShow] = useState(false)
-  if (isMobile) {
-    return (
-      <>
-        <button type="button" onClick={() => setShow(true)}
-          className="w-4 h-4 rounded-full border border-[#71717a] text-[0.6rem] text-[#71717a] bg-transparent cursor-pointer flex items-center justify-center shrink-0 ml-1">?</button>
-        {show && (
-          <div className="fixed inset-0 bg-black/90 z-[400] flex items-center justify-center p-4" onClick={() => setShow(false)}>
-            <div className="bg-[#18181b] rounded-2xl max-w-[440px] w-full border border-[#27272a] p-5 max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-              <div className="flex justify-between items-center mb-3">
-                <h3 className="font-semibold text-sm">What is allowed on this site?</h3>
-                <button onClick={() => setShow(false)} className="bg-[#27272a] border-none w-6 h-6 rounded-md cursor-pointer text-[#a1a1aa] text-base flex items-center justify-center">×</button>
-              </div>
-              <p className="text-[#a1a1aa] text-xs leading-relaxed whitespace-pre-line">{MATURE_TOOLTIP_TEXT}</p>
-            </div>
-          </div>
-        )}
-      </>
-    )
-  }
-  return (
-    <span className="relative group ml-1">
-      <span className="w-4 h-4 rounded-full border border-[#71717a] text-[0.6rem] text-[#71717a] inline-flex items-center justify-center cursor-help">?</span>
-      <span className="absolute left-6 bottom-0 w-[320px] bg-[#27272a] border border-[#3f3f46] rounded-xl p-3 text-[0.68rem] text-[#a1a1aa] leading-relaxed whitespace-pre-line hidden group-hover:block z-[100] shadow-2xl">
-        {MATURE_TOOLTIP_TEXT}
-      </span>
-    </span>
-  )
+function MatureTip({ mobile }: { mobile: boolean }) {
+  const [open, setOpen] = useState(false)
+  if (mobile) return (<>
+    <button type="button" onClick={() => setOpen(true)} className="w-4 h-4 rounded-full border border-[#71717a] text-[0.6rem] text-[#71717a] bg-transparent cursor-pointer flex items-center justify-center ml-1">?</button>
+    {open && <div className="fixed inset-0 bg-black/90 z-[400] flex items-center justify-center p-4" onClick={() => setOpen(false)}>
+      <div className="bg-[#18181b] rounded-2xl max-w-[440px] w-full border border-[#27272a] p-5 max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="flex justify-between items-center mb-3"><h3 className="font-semibold text-sm">What is allowed?</h3>
+        <button onClick={() => setOpen(false)} className="bg-[#27272a] border-none w-6 h-6 rounded-md cursor-pointer text-[#a1a1aa]">&times;</button></div>
+        <p className="text-[#a1a1aa] text-xs leading-relaxed whitespace-pre-line">{MATURE_TEXT}</p></div></div>}
+  </>)
+  return <span className="relative group ml-1"><span className="w-4 h-4 rounded-full border border-[#71717a] text-[0.6rem] text-[#71717a] inline-flex items-center justify-center cursor-help">?</span>
+    <span className="absolute left-6 bottom-0 w-[320px] bg-[#27272a] border border-[#3f3f46] rounded-xl p-3 text-[0.68rem] text-[#a1a1aa] leading-relaxed whitespace-pre-line hidden group-hover:block z-[100] shadow-2xl">{MATURE_TEXT}</span></span>
 }
 
 export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast: (m: string) => void }) {
@@ -55,9 +38,7 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
   const [rating, setRating] = useState<string | null>(null)
   const [genres, setGenres] = useState<Set<string>>(new Set())
   const [desc, setDesc] = useState('')
-  const [tags, setTags] = useState('')
   const [readingMode, setReadingMode] = useState<'webtoon' | 'horizontal'>('webtoon')
-  const [galleryReadingMode, setGalleryReadingMode] = useState<'horizontal' | 'webtoon'>('horizontal')
   const [files, setFiles] = useState<File[]>([])
   const [thumbFile, setThumbFile] = useState<File | null>(null)
   const [thumbPreview, setThumbPreview] = useState<string | null>(null)
@@ -67,25 +48,18 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
   const [isMobile, setIsMobile] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const thumbRef = useRef<HTMLInputElement>(null)
+  const [gTitle, setGTitle] = useState('')
+  const [gDesc, setGDesc] = useState('')
+  const [gMature, setGMature] = useState(false)
+  const [gTags, setGTags] = useState('')
+  const [gReadMode, setGReadMode] = useState<'horizontal' | 'webtoon'>('horizontal')
 
-  // Gallery-specific
-  const [galleryTitle, setGalleryTitle] = useState('')
-  const [galleryDesc, setGalleryDesc] = useState('')
-  const [galleryMature, setGalleryMature] = useState(false)
-  const [galleryTags, setGalleryTags] = useState('')
-
-  useEffect(() => {
-    function check() { setIsMobile(window.innerWidth < 768) }
-    check()
-    window.addEventListener('resize', check)
-    return () => window.removeEventListener('resize', check)
-  }, [])
+  useEffect(() => { const c = () => setIsMobile(window.innerWidth < 768); c(); window.addEventListener('resize', c); return () => window.removeEventListener('resize', c) }, [])
 
   useEffect(() => {
     if (!user) return
     setLoadingSeries(true)
-    supabase.from('series').select('*').eq('author_id', user.id)
-      .order('created_at', { ascending: false })
+    supabase.from('series').select('*').eq('author_id', user.id).order('created_at', { ascending: false })
       .then(({ data }: any) => { setMySeries(data ?? []); setLoadingSeries(false) })
   }, [user, supabase])
 
@@ -96,119 +70,51 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
       .then(({ data }: any) => setChapterNumber(data?.length > 0 ? data[0].chapter_number + 1 : 1))
   }, [selectedSeriesId, supabase])
 
-  const canPublishSeries = mode === 'existing'
-    ? !!(rating && chapterTitle && selectedSeriesId)
-    : !!(format && rating && chapterTitle && seriesTitle)
-
-  const canPublishGallery = !!(galleryTitle.trim() && files.length > 0)
+  const canPubSeries = mode === 'existing' ? !!(rating && chapterTitle && selectedSeriesId) : !!(format && rating && chapterTitle && seriesTitle)
+  const canPubGallery = !!(gTitle.trim() && files.length > 0)
+  const canPublish = uploadType === 'gallery' ? canPubGallery : canPubSeries
 
   function handleFiles(e: React.ChangeEvent<HTMLInputElement>) {
     const nf = Array.from(e.target.files || []).filter(f => {
       if (!f.type.match(/image\/(jpeg|png|webp)/)) return false
-      if (f.size > MAX_FILE_SIZE) { onToast(`${f.name} exceeds 5MB limit — skipped`); return false }
+      if (f.size > MAX_FILE) { onToast(f.name + ' exceeds 5MB'); return false }
       return true
     })
     const combined = [...files, ...nf].slice(0, 100)
-    const totalSize = combined.reduce((sum, f) => sum + f.size, 0)
-    if (totalSize > MAX_TOTAL_SIZE) {
-      onToast('Total file size exceeds 30MB limit. Remove some files.')
-      return
-    }
+    if (combined.reduce((s, f) => s + f.size, 0) > MAX_TOTAL) { onToast('Total exceeds 30MB'); return }
     setFiles(combined)
   }
 
   function handleThumb(e: React.ChangeEvent<HTMLInputElement>) {
-    const f = e.target.files?.[0]
-    if (!f) return
-    if (f.size > MAX_FILE_SIZE) { onToast('Thumbnail must be under 5MB'); return }
+    const f = e.target.files?.[0]; if (!f) return
+    if (f.size > MAX_FILE) { onToast('Thumbnail must be under 5MB'); return }
     setThumbFile(f)
-    const r = new FileReader()
-    r.onload = ev => setThumbPreview(ev.target?.result as string)
-    r.readAsDataURL(f)
+    const r = new FileReader(); r.onload = ev => setThumbPreview(ev.target?.result as string); r.readAsDataURL(f)
   }
 
-  async function submitSeries() {
-    if (!user || !canPublishSeries) return
-    setUploading(true)
-    setUploadError('')
-    setProgress('Preparing...')
-
+  async function ensureProfile() {
+    if (!user) throw new Error('Not logged in')
     try {
-      let seriesId = selectedSeriesId
+      const { data } = await supabase.from('profiles').select('id').eq('id', user.id).maybeSingle()
+      if (data) return
+    } catch {
+      // If select fails (RLS issue), try insert anyway
+    }
+    const dn = user.user_metadata?.display_name || user.user_metadata?.full_name || user.email?.split('@')[0] || 'Creator'
+    const h = (user.user_metadata?.handle || user.email?.split('@')[0]?.replace(/[^a-zA-Z0-9_]/g, '') || 'user_' + user.id.slice(0, 8)).toLowerCase()
+    const { error } = await supabase.from('profiles').insert({ id: user.id, display_name: dn, handle: h })
+    if (error && !error.message.includes('duplicate') && !error.code?.includes('23505')) {
+      throw new Error('Profile setup failed: ' + error.message)
+    }
+  }
 
-      setProgress('Preparing...')
-      const { data: existingProfile } = await supabase
-        .from('profiles').select('id').eq('id', user.id).maybeSingle()
-
-      if (!existingProfile) {
-        const displayName = user.user_metadata?.display_name || user.user_metadata?.full_name || user.email?.split('@')[0] || 'Creator'
-        const handle = (user.user_metadata?.handle || user.email?.split('@')[0]?.replace(/[^a-zA-Z0-9_]/g, '') || `user_${user.id.slice(0, 8)}`).toLowerCase()
-        const { error: profileErr } = await supabase.from('profiles').insert({ id: user.id, display_name: displayName, handle })
-        if (profileErr && !profileErr.message.includes('duplicate') && !profileErr.code?.includes('23505')) {
-          setUploadError('Profile setup failed: ' + profileErr.message)
-          onToast('Profile setup failed: ' + profileErr.message)
-          setUploading(false); return
-        }
-      }
-
-      if (mode === 'new') {
-        setProgress('Creating series...')
-        let thumbnailUrl: string | null = null
-        if (thumbFile) {
-          setProgress('Uploading thumbnail...')
-          const ext = thumbFile.name.split('.').pop() || 'jpg'
-          const path = `thumbnails/${user.id}/${Date.now()}.${ext}`
-          const { error: thumbErr } = await supabase.storage.from('series-assets').upload(path, thumbFile, { upsert: true })
-          if (thumbErr) { onToast('Thumbnail skipped: ' + thumbErr.message) }
-          else { thumbnailUrl = supabase.storage.from('series-assets').getPublicUrl(path).data.publicUrl }
-        }
-
-        const slug = seriesTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') + '-' + Date.now().toString(36)
-        const { data: ns, error: seriesErr } = await supabase.from('series').insert({
-          title: seriesTitle, slug, description: desc || null,
-          format: format!, genres: Array.from(genres),
-          thumbnail_url: thumbnailUrl, author_id: user.id,
-          reading_mode: readingMode,
-        }).select().single()
-
-        if (seriesErr) {
-          setUploadError(seriesErr.message || 'Series creation failed')
-          onToast('Error: ' + (seriesErr.message || 'Series creation failed'))
-          setUploading(false); return
-        }
-        seriesId = ns.id
-      }
-
-      const pageUrls: string[] = []
-      for (let i = 0; i < files.length; i++) {
-        setProgress(`Uploading page ${i + 1}/${files.length}...`)
-        const f = files[i]
-        const ext = f.name.split('.').pop() || 'jpg'
-        const path = `chapters/${seriesId}/${chapterNumber}/${String(i + 1).padStart(3, '0')}.${ext}`
-        const { error: pageErr } = await supabase.storage.from('series-assets').upload(path, f, { upsert: true })
-        if (pageErr) {
-          const msg = `Page ${i + 1} failed: ${pageErr.message}`
-          setUploadError(msg); onToast(msg); setUploading(false); return
-        }
-        pageUrls.push(supabase.storage.from('series-assets').getPublicUrl(path).data.publicUrl)
-      }
-
-      setProgress('Saving chapter...')
-      const { error: chErr } = await supabase.from('chapters').insert({
-        series_id: seriesId, chapter_number: chapterNumber,
-        title: chapterTitle, rating: rating!,
-        page_urls: pageUrls.length > 0 ? pageUrls : null,
-        reading_mode: readingMode,
-      })
-      if (chErr) {
-        setUploadError(chErr.message || 'Chapter save failed')
-        onToast('Error: ' + (chErr.message || 'Chapter save failed'))
-        setUploading(false); return
-      }
-
-      await supabase.from('series').update({ updated_at: new Date().toISOString() }).eq('id', seriesId)
-      onToast('Chapter published successfully! 🎉')
-      onClose()
+  async function submit() {
+    if (!user || !canPublish) return
+    setUploading(true); setUploadError(''); setProgress('Preparing...')
+    try {
+      await ensureProfile()
+      if (uploadType === 'gallery') await doGalleryUpload()
+      else await doSeriesUpload()
     } catch (err: any) {
       const msg = err?.message || 'Unexpected error'
       setUploadError(msg); onToast('Error: ' + msg)
@@ -216,103 +122,102 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
     setUploading(false)
   }
 
-  async function submitGallery() {
-    if (!user || !canPublishGallery) return
-    setUploading(true)
-    setUploadError('')
-    setProgress('Preparing gallery...')
-
-    try {
-      // Ensure profile exists
-      const { data: existingProfile } = await supabase.from('profiles').select('id').eq('id', user.id).maybeSingle()
-      if (!existingProfile) {
-        const displayName = user.user_metadata?.display_name || user.user_metadata?.full_name || user.email?.split('@')[0] || 'Creator'
-        const handle = (user.user_metadata?.handle || user.email?.split('@')[0]?.replace(/[^a-zA-Z0-9_]/g, '') || `user_${user.id.slice(0, 8)}`).toLowerCase()
-        await supabase.from('profiles').insert({ id: user.id, display_name: displayName, handle })
-      }
-
-      // Upload images
-      const imageUrls: string[] = []
-      for (let i = 0; i < files.length; i++) {
-        setProgress(`Uploading image ${i + 1}/${files.length}...`)
-        const f = files[i]
-        const ext = f.name.split('.').pop() || 'jpg'
-        const path = `gallery/${user.id}/${Date.now()}_${i}.${ext}`
-        const { error } = await supabase.storage.from('series-assets').upload(path, f, { upsert: true })
-        if (error) { setUploadError(`Image ${i + 1} failed: ${error.message}`); onToast(`Image ${i + 1} failed`); setUploading(false); return }
-        imageUrls.push(supabase.storage.from('series-assets').getPublicUrl(path).data.publicUrl)
-      }
-
-      // Upload thumbnail if album (multiple images)
+  async function doSeriesUpload() {
+    let seriesId = selectedSeriesId
+    if (mode === 'new') {
+      setProgress('Creating series...')
       let thumbnailUrl: string | null = null
-      if (files.length > 1 && thumbFile) {
+      if (thumbFile) {
+        setProgress('Uploading thumbnail...')
         const ext = thumbFile.name.split('.').pop() || 'jpg'
-        const path = `gallery/${user.id}/thumb_${Date.now()}.${ext}`
+        const path = 'thumbnails/' + user!.id + '/' + Date.now() + '.' + ext
         const { error } = await supabase.storage.from('series-assets').upload(path, thumbFile, { upsert: true })
-        if (!error) { thumbnailUrl = supabase.storage.from('series-assets').getPublicUrl(path).data.publicUrl }
+        if (error) onToast('Thumbnail skipped: ' + error.message)
+        else thumbnailUrl = supabase.storage.from('series-assets').getPublicUrl(path).data.publicUrl
       }
-
-      setProgress('Saving gallery entry...')
-      const { error: gErr } = await supabase.from('gallery').insert({
-        title: galleryTitle.trim(),
-        description: galleryDesc || null,
-        image_urls: imageUrls,
-        thumbnail_url: thumbnailUrl,
-        author_id: user.id,
-        is_mature: galleryMature,
-        tags: galleryTags ? galleryTags.split(',').map(t => t.trim()).filter(Boolean) : [],
-        reading_mode: galleryReadingMode,
-      })
-
-      if (gErr) { setUploadError(gErr.message); onToast('Error: ' + gErr.message); setUploading(false); return }
-
-      onToast('Gallery artwork published! 🎉')
-      onClose()
-    } catch (err: any) {
-      setUploadError(err?.message || 'Unexpected error')
-      onToast('Error: ' + (err?.message || 'Unexpected error'))
+      const slug = seriesTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') + '-' + Date.now().toString(36)
+      const { data: ns, error: sErr } = await supabase.from('series').insert({
+        title: seriesTitle, slug, description: desc || null, format: format!, genres: Array.from(genres),
+        thumbnail_url: thumbnailUrl, author_id: user!.id, reading_mode: readingMode,
+      }).select().single()
+      if (sErr) throw new Error(sErr.message || 'Series creation failed')
+      seriesId = ns.id
     }
-    setUploading(false)
+    const pageUrls: string[] = []
+    for (let i = 0; i < files.length; i++) {
+      setProgress('Uploading page ' + (i + 1) + '/' + files.length + '...')
+      const f = files[i], ext = f.name.split('.').pop() || 'jpg'
+      const path = 'chapters/' + seriesId + '/' + chapterNumber + '/' + String(i + 1).padStart(3, '0') + '.' + ext
+      const { error } = await supabase.storage.from('series-assets').upload(path, f, { upsert: true })
+      if (error) throw new Error('Page ' + (i + 1) + ' failed: ' + error.message)
+      pageUrls.push(supabase.storage.from('series-assets').getPublicUrl(path).data.publicUrl)
+    }
+    setProgress('Saving chapter...')
+    const { error: chErr } = await supabase.from('chapters').insert({
+      series_id: seriesId, chapter_number: chapterNumber, title: chapterTitle, rating: rating!,
+      page_urls: pageUrls.length > 0 ? pageUrls : null, reading_mode: readingMode,
+    })
+    if (chErr) throw new Error(chErr.message || 'Chapter save failed')
+    await supabase.from('series').update({ updated_at: new Date().toISOString() }).eq('id', seriesId)
+    onToast('Chapter published! \ud83c\udf89'); onClose()
   }
 
-  function submit() {
-    if (uploadType === 'gallery') submitGallery()
-    else submitSeries()
+  async function doGalleryUpload() {
+    const imageUrls: string[] = []
+    for (let i = 0; i < files.length; i++) {
+      setProgress('Uploading image ' + (i + 1) + '/' + files.length + '...')
+      const f = files[i], ext = f.name.split('.').pop() || 'jpg'
+      const path = 'gallery/' + user!.id + '/' + Date.now() + '_' + i + '.' + ext
+      const { error } = await supabase.storage.from('series-assets').upload(path, f, { upsert: true })
+      if (error) throw new Error('Image ' + (i + 1) + ' failed: ' + error.message)
+      imageUrls.push(supabase.storage.from('series-assets').getPublicUrl(path).data.publicUrl)
+    }
+    let thumbnailUrl: string | null = null
+    if (files.length > 1 && thumbFile) {
+      const ext = thumbFile.name.split('.').pop() || 'jpg'
+      const path = 'gallery/' + user!.id + '/thumb_' + Date.now() + '.' + ext
+      const { error } = await supabase.storage.from('series-assets').upload(path, thumbFile, { upsert: true })
+      if (!error) thumbnailUrl = supabase.storage.from('series-assets').getPublicUrl(path).data.publicUrl
+    }
+    setProgress('Saving...')
+    const { error } = await supabase.from('gallery').insert({
+      title: gTitle.trim(), description: gDesc || null, image_urls: imageUrls,
+      thumbnail_url: thumbnailUrl, author_id: user!.id, is_mature: gMature,
+      tags: gTags ? gTags.split(',').map((t: string) => t.trim()).filter(Boolean) : [],
+      reading_mode: gReadMode,
+    })
+    if (error) throw new Error(error.message)
+    onToast('Gallery published! \ud83c\udf89'); onClose()
   }
-
-  const canPublish = uploadType === 'gallery' ? canPublishGallery : canPublishSeries
-  const isAlbum = files.length > 1
 
   return (
     <div className="fixed inset-0 bg-black/90 z-[200] flex items-start justify-center overflow-y-auto p-4 pb-10">
-      <div className={`bg-[#18181b] rounded-2xl w-full border border-[#27272a] ${step === 'choose' ? 'max-w-[600px] md:max-w-[700px]' : 'max-w-[600px] md:max-w-[700px]'} ${step === 'form' ? 'md:min-h-[calc(100vh-80px)]' : ''}`}>
+      <div className={'bg-[#18181b] rounded-2xl w-full border border-[#27272a] ' + (step === 'choose' ? 'max-w-[600px] md:max-w-[700px]' : 'max-w-[600px] md:max-w-[700px]') + (step === 'form' ? ' md:min-h-[calc(100vh-80px)]' : '')}>
         <div className="p-3.5 border-b border-[#27272a] flex justify-between items-center sticky top-0 bg-[#18181b] z-10 rounded-t-2xl">
           <h2 className="font-semibold text-base">
-            {step === 'form' && uploadType === 'gallery' ? 'Upload to Gallery' :
-             step === 'form' && mode === 'existing' ? 'Add Chapter' :
-             step === 'form' ? 'New Series' : 'Upload'}
+            {step === 'form' && uploadType === 'gallery' ? 'Upload to Gallery' : step === 'form' && mode === 'existing' ? 'Add Chapter' : step === 'form' ? 'New Series' : 'Upload'}
           </h2>
-          <button onClick={onClose} className="bg-[#27272a] border-none w-6 h-6 rounded-md cursor-pointer text-[#a1a1aa] text-base flex items-center justify-center hover:text-white">×</button>
+          <button onClick={onClose} className="bg-[#27272a] border-none w-6 h-6 rounded-md cursor-pointer text-[#a1a1aa] text-base flex items-center justify-center hover:text-white">&times;</button>
         </div>
 
         {step === 'choose' && (
           <div className="p-4 md:p-6 flex flex-col gap-3 md:gap-4">
-            <h3 className="text-sm text-[#71717a] mb-1">Series</h3>
-            <button onClick={() => { setUploadType('series'); setMode('new'); setStep('form'); setReadingMode('webtoon') }}
-              className="w-full p-4 md:p-6 border border-[#3f3f46] rounded-xl bg-transparent text-left cursor-pointer hover:border-[#a855f7] transition-colors">
-              <div className="font-semibold text-sm md:text-lg mb-0.5">📁 Create a new series</div>
+            <h3 className="text-sm text-[#71717a]">Series</h3>
+            <button onClick={() => { setUploadType('series'); setMode('new'); setStep('form') }}
+              className="w-full p-4 md:p-6 border border-[#3f3f46] rounded-xl bg-transparent text-left cursor-pointer hover:border-[#a855f7]">
+              <div className="font-semibold text-sm md:text-lg mb-0.5">\ud83d\udcc1 Create a new series</div>
               <div className="text-xs md:text-base text-[#71717a]">Upload the first chapter of a brand new series</div>
             </button>
-            <button onClick={() => { setUploadType('series'); setMode('existing'); setStep('existing'); setReadingMode('webtoon') }}
-              className="w-full p-4 md:p-6 border border-[#3f3f46] rounded-xl bg-transparent text-left cursor-pointer hover:border-[#a855f7] transition-colors">
-              <div className="font-semibold text-sm md:text-lg mb-0.5">➕ Add chapter to existing series</div>
+            <button onClick={() => { setUploadType('series'); setMode('existing'); setStep('existing') }}
+              className="w-full p-4 md:p-6 border border-[#3f3f46] rounded-xl bg-transparent text-left cursor-pointer hover:border-[#a855f7]">
+              <div className="font-semibold text-sm md:text-lg mb-0.5">\u2795 Add chapter to existing series</div>
               <div className="text-xs md:text-base text-[#71717a]">Upload a new chapter to one of your current series</div>
             </button>
-            <h3 className="text-sm text-[#71717a] mt-2 mb-1">Gallery</h3>
-            <button onClick={() => { setUploadType('gallery'); setStep('form'); setGalleryReadingMode('horizontal') }}
-              className="w-full p-4 md:p-6 border border-[#3f3f46] rounded-xl bg-transparent text-left cursor-pointer hover:border-[#a855f7] transition-colors">
-              <div className="font-semibold text-sm md:text-lg mb-0.5">🎨 Upload to Gallery</div>
-              <div className="text-xs md:text-base text-[#71717a]">Single artwork or album — no category tags needed</div>
+            <h3 className="text-sm text-[#71717a] mt-2">Gallery</h3>
+            <button onClick={() => { setUploadType('gallery'); setStep('form') }}
+              className="w-full p-4 md:p-6 border border-[#3f3f46] rounded-xl bg-transparent text-left cursor-pointer hover:border-[#a855f7]">
+              <div className="font-semibold text-sm md:text-lg mb-0.5">\ud83c\udfa8 Upload to Gallery</div>
+              <div className="text-xs md:text-base text-[#71717a]">Single artwork or album</div>
             </button>
           </div>
         )}
@@ -320,281 +225,89 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
         {step === 'existing' && (
           <div className="p-4">
             <p className="text-sm text-[#71717a] mb-2.5">Select your series:</p>
-            {loadingSeries ? (
-              <p className="text-[#52525b] text-xs py-4 text-center">Loading your series...</p>
-            ) : mySeries.length === 0 ? (
-              <p className="text-[#52525b] text-xs py-4 text-center">No series yet. Create one first!</p>
-            ) : (
+            {loadingSeries ? <p className="text-[#52525b] text-xs py-4 text-center">Loading...</p> : mySeries.length === 0 ? <p className="text-[#52525b] text-xs py-4 text-center">No series yet.</p> : (
               <div className="flex flex-col gap-2 mb-3.5">
-                {mySeries.map(s => (
-                  <div key={s.id}
-                    onClick={() => { setSelectedSeriesId(s.id); setReadingMode(s.reading_mode || 'webtoon'); setTimeout(() => setStep('form'), 150) }}
-                    className={`p-2.5 border rounded-lg cursor-pointer flex items-center gap-2.5 transition-all ${selectedSeriesId === s.id ? 'border-[#a855f7] bg-purple-500/10' : 'border-[#3f3f46] hover:border-[#a855f7]'}`}>
-                    {s.thumbnail_url
-                      ? <img src={s.thumbnail_url} className="w-8 h-12 rounded-md shrink-0 object-cover" alt={s.title} />
-                      : <div className="w-8 h-12 rounded-md shrink-0 bg-[#27272a] flex items-center justify-center text-lg">📖</div>}
-                    <div>
-                      <div className="font-medium text-sm">{s.title}</div>
-                      <div className="text-[0.71rem] text-[#71717a]">{s.format}</div>
-                    </div>
+                {mySeries.map((s: any) => (
+                  <div key={s.id} onClick={() => { setSelectedSeriesId(s.id); setReadingMode(s.reading_mode || 'webtoon'); setTimeout(() => setStep('form'), 150) }}
+                    className={'p-2.5 border rounded-lg cursor-pointer flex items-center gap-2.5 ' + (selectedSeriesId === s.id ? 'border-[#a855f7] bg-purple-500/10' : 'border-[#3f3f46] hover:border-[#a855f7]')}>
+                    {s.thumbnail_url ? <img src={s.thumbnail_url} className="w-8 h-12 rounded-md shrink-0 object-cover" alt={s.title} /> : <div className="w-8 h-12 rounded-md shrink-0 bg-[#27272a] flex items-center justify-center text-lg">\ud83d\udcd6</div>}
+                    <div><div className="font-medium text-sm">{s.title}</div><div className="text-[0.71rem] text-[#71717a]">{s.format}</div></div>
                   </div>
                 ))}
               </div>
             )}
-            <button onClick={() => setStep('choose')} className="bg-transparent border-none text-[#71717a] cursor-pointer text-sm">← Back</button>
+            <button onClick={() => setStep('choose')} className="bg-transparent border-none text-[#71717a] cursor-pointer text-sm">\u2190 Back</button>
           </div>
         )}
 
-        {step === 'form' && uploadType === 'gallery' && (
-          <>
-            <div className="p-4 flex flex-col gap-3">
-              {uploadError && <div className="bg-red-500/10 border border-red-500/30 text-red-400 text-xs rounded-xl p-2.5">{uploadError}</div>}
+        {step === 'form' && uploadType === 'gallery' && (<>
+          <div className="p-4 flex flex-col gap-3">
+            {uploadError && <div className="bg-red-500/10 border border-red-500/30 text-red-400 text-xs rounded-xl p-2.5">{uploadError}</div>}
+            <div><label className="block text-xs text-[#71717a] mb-1">Title *</label><input value={gTitle} onChange={e => setGTitle(e.target.value)} placeholder="My Artwork" className="w-full bg-[#27272a] border border-[#3f3f46] rounded-lg p-2 text-[#e4e4e7] text-sm outline-none focus:border-[#a855f7]" /></div>
+            <div><label className="block text-xs text-[#71717a] mb-1">Description</label><textarea value={gDesc} onChange={e => setGDesc(e.target.value)} rows={2} placeholder="About this artwork..." className="w-full bg-[#27272a] border border-[#3f3f46] rounded-lg p-2 text-[#e4e4e7] text-sm outline-none resize-y font-[inherit] focus:border-[#a855f7]" /></div>
+            <div><label className="block text-xs text-[#71717a] mb-1">Tags <span className="text-[#52525b]">(comma separated)</span></label><input value={gTags} onChange={e => setGTags(e.target.value)} placeholder="fantasy, dark" className="w-full bg-[#27272a] border border-[#3f3f46] rounded-lg p-2 text-[#e4e4e7] text-sm outline-none focus:border-[#a855f7]" /></div>
+            <div className="flex items-center gap-2"><label className="text-xs text-[#71717a]">Mature</label><MatureTip mobile={isMobile} /><button onClick={() => setGMature(!gMature)} className={'w-9 h-5 rounded-full border-none cursor-pointer relative shrink-0 ' + (gMature ? 'bg-amber-500' : 'bg-[#3f3f46]')}><span className={'absolute top-[1.5px] w-4 h-4 bg-white rounded-full transition-all ' + (gMature ? 'right-[2px]' : 'left-[1.5px]')}></span></button></div>
+            <div><label className="block text-xs text-[#71717a] mb-1.5">Reading Mode</label><div className="flex gap-1.5">
+              <button onClick={() => setGReadMode('horizontal')} className={'px-3 py-1.5 rounded-lg cursor-pointer text-xs font-medium border ' + (gReadMode === 'horizontal' ? 'border-[#a855f7] text-[#c084fc] bg-purple-500/10' : 'border-[#3f3f46] text-[#71717a] bg-transparent')}>\u25c0\u25b6 Horizontal</button>
+              <button onClick={() => setGReadMode('webtoon')} className={'px-3 py-1.5 rounded-lg cursor-pointer text-xs font-medium border ' + (gReadMode === 'webtoon' ? 'border-[#a855f7] text-[#c084fc] bg-purple-500/10' : 'border-[#3f3f46] text-[#71717a] bg-transparent')}>\u25bc Webtoon</button>
+            </div></div>
+            {files.length > 1 && (<div><label className="block text-xs text-[#71717a] mb-1.5">Album Thumbnail</label><div className="flex items-center gap-3"><div className="w-12 h-[72px] rounded-lg bg-[#27272a] border border-dashed border-[#3f3f46] flex items-center justify-center shrink-0 overflow-hidden">{thumbPreview ? <img src={thumbPreview} className="w-full h-full object-cover" alt="" /> : <span className="text-[#52525b] text-lg">\ud83d\udcf7</span>}</div><button type="button" onClick={() => thumbRef.current?.click()} className="px-3 py-1.5 border border-[#3f3f46] rounded-lg bg-transparent text-[#c084fc] cursor-pointer text-xs">{thumbPreview ? 'Change' : 'Choose'}</button><input ref={thumbRef} type="file" className="hidden" accept=".jpg,.jpeg,.png,.webp" onChange={handleThumb} /></div></div>)}
+            <div><label className="block text-xs text-[#71717a] mb-1.5">Images <span className="text-[#52525b]">(max 5MB each, 30MB total)</span></label>
+              <div onClick={() => fileRef.current?.click()} className="border-2 border-dashed border-[#3f3f46] rounded-xl p-6 md:p-10 text-center cursor-pointer hover:border-[#a855f7]">
+                <input ref={fileRef} type="file" className="hidden" accept=".jpg,.jpeg,.png,.webp" multiple onChange={handleFiles} />
+                <p className="text-sm font-medium text-[#d4d4d8]">{files.length ? files.length + ' image(s) selected' : 'Click to select images'}</p>
+                {files.length > 0 && <div className="mt-2 max-h-[100px] overflow-y-auto text-left" onClick={e => e.stopPropagation()}>{files.map((f, i) => (<div key={i} className="flex items-center gap-2 py-1 border-b border-[#27272a] text-xs"><span className="text-[#52525b] w-5 text-center">{i+1}</span><span className="flex-1 truncate">{f.name}</span><span className="text-[#52525b]">{(f.size/1024).toFixed(0)}KB</span><button onClick={() => setFiles(p => p.filter((_,j) => j!==i))} className="text-[#71717a] hover:text-[#f87171] bg-transparent border-none cursor-pointer text-xs px-1">\u2715</button></div>))}</div>}
+              </div></div>
+            <button onClick={() => { setStep('choose'); setFiles([]) }} className="bg-transparent border-none text-[#71717a] cursor-pointer text-sm text-left">\u2190 Back</button>
+          </div>
+          <div className="p-3 border-t border-[#27272a] flex gap-2">
+            <button onClick={onClose} className="flex-1 py-2 border border-[#3f3f46] rounded-lg bg-transparent text-[#a1a1aa] cursor-pointer text-sm">Cancel</button>
+            <button onClick={submit} disabled={!canPublish || uploading} className={'flex-[2] py-2 bg-[#7c3aed] text-white rounded-lg text-sm font-medium border-none ' + (canPublish && !uploading ? 'cursor-pointer hover:bg-[#6d28d9]' : 'opacity-40 cursor-not-allowed')}>{uploading ? progress : 'Publish'}</button>
+          </div>
+        </>)}
 
-              <div>
-                <label className="block text-xs text-[#71717a] mb-1">Title *</label>
-                <input value={galleryTitle} onChange={e => setGalleryTitle(e.target.value)} placeholder="My Artwork"
-                  className="w-full bg-[#27272a] border border-[#3f3f46] rounded-lg p-2 text-[#e4e4e7] text-sm outline-none focus:border-[#a855f7]" />
-              </div>
-
-              <div>
-                <label className="block text-xs text-[#71717a] mb-1">Description</label>
-                <textarea value={galleryDesc} onChange={e => setGalleryDesc(e.target.value)} rows={2} placeholder="About this artwork..."
-                  className="w-full bg-[#27272a] border border-[#3f3f46] rounded-lg p-2 text-[#e4e4e7] text-sm outline-none resize-y font-[inherit] focus:border-[#a855f7]" />
-              </div>
-
-              <div>
-                <label className="block text-xs text-[#71717a] mb-1">Tags <span className="text-[#52525b]">(comma separated)</span></label>
-                <input value={galleryTags} onChange={e => setGalleryTags(e.target.value)} placeholder="fantasy, dark, portrait"
-                  className="w-full bg-[#27272a] border border-[#3f3f46] rounded-lg p-2 text-[#e4e4e7] text-sm outline-none focus:border-[#a855f7]" />
-              </div>
-
-              <div className="flex items-center gap-2">
-                <label className="text-xs text-[#71717a]">Mature Content</label>
-                <MatureTooltip isMobile={isMobile} />
-                <button onClick={() => setGalleryMature(!galleryMature)}
-                  className={`w-9 h-5 rounded-full border-none cursor-pointer relative shrink-0 ${galleryMature ? 'bg-amber-500' : 'bg-[#3f3f46]'}`}>
-                  <span className={`absolute top-[1.5px] w-4 h-4 bg-white rounded-full transition-all ${galleryMature ? 'right-[2px]' : 'left-[1.5px]'}`}></span>
-                </button>
-              </div>
-
-              {/* Reading Mode Toggle */}
-              <div>
-                <label className="block text-xs text-[#71717a] mb-1.5">Reading Mode</label>
-                <div className="flex gap-1.5">
-                  <button onClick={() => setGalleryReadingMode('horizontal')}
-                    className={`px-3 py-1.5 rounded-lg cursor-pointer text-xs font-medium border ${galleryReadingMode === 'horizontal' ? 'border-[#a855f7] text-[#c084fc] bg-purple-500/10' : 'border-[#3f3f46] text-[#71717a] bg-transparent'}`}>
-                    ◀▶ Horizontal Pages
-                  </button>
-                  <button onClick={() => setGalleryReadingMode('webtoon')}
-                    className={`px-3 py-1.5 rounded-lg cursor-pointer text-xs font-medium border ${galleryReadingMode === 'webtoon' ? 'border-[#a855f7] text-[#c084fc] bg-purple-500/10' : 'border-[#3f3f46] text-[#71717a] bg-transparent'}`}>
-                    ▼ Webtoon Scroll
-                  </button>
-                </div>
-              </div>
-
-              {/* Album thumbnail - only show if multiple images */}
-              {isAlbum && (
-                <div>
-                  <label className="block text-xs text-[#71717a] mb-1.5">Album Thumbnail <span className="text-[#52525b]">(optional, max 5MB)</span></label>
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-[72px] rounded-lg bg-[#27272a] border border-dashed border-[#3f3f46] flex items-center justify-center shrink-0 overflow-hidden">
-                      {thumbPreview ? <img src={thumbPreview} className="w-full h-full object-cover" alt="thumb" /> : <span className="text-[#52525b] text-lg">📷</span>}
-                    </div>
-                    <button type="button" onClick={() => thumbRef.current?.click()}
-                      className="px-3 py-1.5 border border-[#3f3f46] rounded-lg bg-transparent text-[#c084fc] cursor-pointer text-xs hover:border-[#a855f7]">
-                      {thumbPreview ? 'Change' : 'Choose Image'}
-                    </button>
-                    <input ref={thumbRef} type="file" className="hidden" accept=".jpg,.jpeg,.png,.webp" onChange={handleThumb} />
-                  </div>
-                </div>
-              )}
-
-              <div>
-                <label className="block text-xs text-[#71717a] mb-1.5">Images <span className="text-[#52525b]">(JPG, PNG, WebP — max 5MB each, 30MB total)</span></label>
-                <div onClick={() => fileRef.current?.click()}
-                  className="border-2 border-dashed border-[#3f3f46] rounded-xl p-6 md:p-10 text-center cursor-pointer hover:border-[#a855f7] transition-colors">
-                  <input ref={fileRef} type="file" className="hidden" accept=".jpg,.jpeg,.png,.webp" multiple onChange={handleFiles} />
-                  <p className="text-sm font-medium text-[#d4d4d8]">{files.length ? `${files.length} image${files.length > 1 ? 's' : ''} selected` : 'Click to select images'}</p>
-                  <p className="text-[0.71rem] text-[#71717a] mt-0.5">{files.length ? 'Click to add more' : 'You can select multiple images at once'}</p>
-                  {files.length > 0 && (
-                    <div className="mt-2 max-h-[120px] overflow-y-auto text-left" onClick={e => e.stopPropagation()}>
-                      {files.map((f, i) => (
-                        <div key={i} className="flex items-center gap-2 py-1 border-b border-[#27272a] text-xs">
-                          <span className="text-[#52525b] w-5 text-center shrink-0">{i + 1}</span>
-                          <span className="flex-1 truncate">{f.name}</span>
-                          <span className="text-[#52525b] shrink-0">{(f.size / 1024).toFixed(0)}KB</span>
-                          <button onClick={() => setFiles(p => p.filter((_, j) => j !== i))}
-                            className="text-[#71717a] hover:text-[#f87171] bg-transparent border-none cursor-pointer text-xs px-1">✕</button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <button onClick={() => { setStep('choose'); setFiles([]) }} className="bg-transparent border-none text-[#71717a] cursor-pointer text-sm text-left">← Back</button>
-            </div>
-            <div className="p-3 border-t border-[#27272a] flex gap-2">
-              <button onClick={onClose} className="flex-1 py-2 border border-[#3f3f46] rounded-lg bg-transparent text-[#a1a1aa] cursor-pointer text-sm">Cancel</button>
-              <button onClick={submit} disabled={!canPublish || uploading}
-                className={`flex-[2] py-2 bg-[#7c3aed] text-white rounded-lg text-sm font-medium border-none ${canPublish && !uploading ? 'cursor-pointer hover:bg-[#6d28d9]' : 'opacity-40 cursor-not-allowed'}`}>
-                {uploading ? progress : 'Publish'}
-              </button>
-            </div>
-          </>
-        )}
-
-        {step === 'form' && uploadType === 'series' && (
-          <>
-            <div className="p-4 flex flex-col gap-3">
-              {uploadError && <div className="bg-red-500/10 border border-red-500/30 text-red-400 text-xs rounded-xl p-2.5">{uploadError}</div>}
-
-              {mode === 'new' && (
-                <div>
-                  <label className="block text-xs text-[#71717a] mb-1">Series Title *</label>
-                  <input value={seriesTitle} onChange={e => setSeriesTitle(e.target.value)} placeholder="My Awesome Series"
-                    className="w-full bg-[#27272a] border border-[#3f3f46] rounded-lg p-2 text-[#e4e4e7] text-sm outline-none focus:border-[#a855f7]" />
-                  <div className="mt-2.5">
-                    <label className="block text-xs text-[#71717a] mb-1.5">Thumbnail <span className="text-[#52525b]">(optional, max 5MB)</span></label>
-                    <div className="flex items-center gap-3">
-                      <div className="w-12 h-[72px] rounded-lg bg-[#27272a] border border-dashed border-[#3f3f46] flex items-center justify-center shrink-0 overflow-hidden">
-                        {thumbPreview ? <img src={thumbPreview} className="w-full h-full object-cover" alt="thumb" /> : <span className="text-[#52525b] text-lg">📷</span>}
-                      </div>
-                      <div className="flex flex-col gap-1.5">
-                        <button type="button" onClick={() => thumbRef.current?.click()}
-                          className="px-3 py-1.5 border border-[#3f3f46] rounded-lg bg-transparent text-[#c084fc] cursor-pointer text-xs hover:border-[#a855f7]">
-                          {thumbPreview ? 'Change Image' : 'Choose Image'}
-                        </button>
-                        {thumbPreview && (
-                          <button type="button" onClick={() => { setThumbFile(null); setThumbPreview(null) }}
-                            className="px-3 py-1.5 border border-[#3f3f46] rounded-lg bg-transparent text-[#71717a] cursor-pointer text-xs hover:border-red-500 hover:text-red-400">
-                            Remove
-                          </button>
-                        )}
-                      </div>
-                      <input ref={thumbRef} type="file" className="hidden" accept=".jpg,.jpeg,.png,.webp" onChange={handleThumb} />
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              <div>
-                <label className="block text-xs text-[#71717a] mb-1">Chapter Title *</label>
-                <input value={chapterTitle} onChange={e => setChapterTitle(e.target.value)} placeholder="Chapter 1 — The Beginning"
-                  className="w-full bg-[#27272a] border border-[#3f3f46] rounded-lg p-2 text-[#e4e4e7] text-sm outline-none focus:border-[#a855f7]" />
-              </div>
-
-              <div>
-                <label className="block text-xs text-[#71717a] mb-1">Chapter #</label>
-                <input type="number" value={chapterNumber} onChange={e => setChapterNumber(parseInt(e.target.value) || 1)} min={1}
-                  className="w-20 bg-[#27272a] border border-[#3f3f46] rounded-lg p-2 text-[#e4e4e7] text-sm outline-none focus:border-[#a855f7]" />
-              </div>
-
-              {mode === 'new' && (
-                <div>
-                  <label className="block text-xs text-[#71717a] mb-1.5">Format *</label>
-                  <div className="flex gap-1.5">
-                    {['Series', 'One Shot'].map(f => (
-                      <button key={f} onClick={() => setFormat(f)}
-                        className={`px-4 py-1.5 rounded-lg cursor-pointer text-xs font-medium border ${format === f ? 'border-[#a855f7] text-[#c084fc] bg-purple-500/10' : 'border-[#3f3f46] text-[#71717a] bg-transparent'}`}>
-                        {f}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              <div>
-                <div className="flex items-center gap-1 mb-1.5">
-                  <label className="block text-xs text-[#71717a]">Content Rating *</label>
-                  <MatureTooltip isMobile={isMobile} />
-                </div>
-                <div className="flex gap-1.5">
-                  <button onClick={() => setRating('General')}
-                    className={`px-3 py-1.5 rounded-lg cursor-pointer text-xs font-medium border ${rating === 'General' ? 'border-green-500 text-green-400 bg-green-500/[0.08]' : 'border-[#3f3f46] text-[#71717a] bg-transparent'}`}>
-                    General
-                  </button>
-                  <button onClick={() => setRating('Mature')}
-                    className={`px-3 py-1.5 rounded-lg cursor-pointer text-xs font-medium border ${rating === 'Mature' ? 'border-amber-500 text-amber-400 bg-amber-500/[0.08]' : 'border-[#3f3f46] text-[#71717a] bg-transparent'}`}>
-                    Mature
-                  </button>
-                </div>
-              </div>
-
-              {/* Reading Mode Toggle */}
-              <div>
-                <label className="block text-xs text-[#71717a] mb-1.5">Reading Mode</label>
-                <div className="flex gap-1.5">
-                  <button onClick={() => setReadingMode('webtoon')}
-                    className={`px-3 py-1.5 rounded-lg cursor-pointer text-xs font-medium border ${readingMode === 'webtoon' ? 'border-[#a855f7] text-[#c084fc] bg-purple-500/10' : 'border-[#3f3f46] text-[#71717a] bg-transparent'}`}>
-                    ▼ Webtoon (Vertical Scroll)
-                  </button>
-                  <button onClick={() => setReadingMode('horizontal')}
-                    className={`px-3 py-1.5 rounded-lg cursor-pointer text-xs font-medium border ${readingMode === 'horizontal' ? 'border-[#a855f7] text-[#c084fc] bg-purple-500/10' : 'border-[#3f3f46] text-[#71717a] bg-transparent'}`}>
-                    ◀▶ Horizontal Pages
-                  </button>
-                </div>
-              </div>
-
-              {mode === 'new' && (
-                <div className="border-t border-[#27272a] pt-3">
-                  <label className="block text-xs text-[#71717a] mb-1.5">Genres <span className="text-[#52525b]">(pick up to 3)</span></label>
-                  <div className="flex gap-1 flex-wrap mb-3">
-                    {GENRES_ALL.map(g => (
-                      <button key={g} onClick={() => {
-                        const n = new Set(genres)
-                        if (n.has(g)) n.delete(g); else if (n.size < 3) n.add(g); else return
-                        setGenres(n)
-                      }} className={`px-2.5 py-1 rounded-full text-[0.73rem] cursor-pointer border ${genres.has(g) ? 'border-[#a855f7] text-[#c084fc] bg-purple-500/10' : genres.size >= 3 ? 'border-[#27272a] text-[#3f3f46] bg-transparent cursor-not-allowed' : 'border-[#3f3f46] text-[#71717a] bg-transparent'}`}>
-                        {g}
-                      </button>
-                    ))}
-                  </div>
-                  <label className="block text-xs text-[#71717a] mb-1">Description</label>
-                  <textarea value={desc} onChange={e => setDesc(e.target.value)} rows={2} placeholder="Brief description of your series..."
-                    className="w-full bg-[#27272a] border border-[#3f3f46] rounded-lg p-2 text-[#e4e4e7] text-sm outline-none resize-y font-[inherit] focus:border-[#a855f7]" />
-                </div>
-              )}
-
-              <div>
-                <label className="block text-xs text-[#71717a] mb-1.5">Chapter Pages <span className="text-[#52525b]">(JPG, PNG, WebP — max 5MB each, 30MB total)</span></label>
-                <div onClick={() => fileRef.current?.click()}
-                  className="border-2 border-dashed border-[#3f3f46] rounded-xl p-6 md:p-10 text-center cursor-pointer hover:border-[#a855f7] transition-colors">
-                  <input ref={fileRef} type="file" className="hidden" accept=".jpg,.jpeg,.png,.webp" multiple onChange={handleFiles} />
-                  <p className="text-sm font-medium text-[#d4d4d8]">
-                    {files.length ? `${files.length} page${files.length > 1 ? 's' : ''} selected` : 'Click to select pages'}
-                  </p>
-                  <p className="text-[0.71rem] text-[#71717a] mt-0.5">
-                    {files.length ? 'Click to add more' : 'You can select multiple images at once'}
-                  </p>
-                  {files.length > 0 && (
-                    <div className="mt-2 max-h-[120px] overflow-y-auto text-left" onClick={e => e.stopPropagation()}>
-                      {files.map((f, i) => (
-                        <div key={i} className="flex items-center gap-2 py-1 border-b border-[#27272a] text-xs">
-                          <span className="text-[#52525b] w-5 text-center shrink-0">{i + 1}</span>
-                          <span className="flex-1 truncate">{f.name}</span>
-                          <span className="text-[#52525b] shrink-0">{(f.size / 1024).toFixed(0)}KB</span>
-                          <button onClick={() => setFiles(p => p.filter((_, j) => j !== i))}
-                            className="text-[#71717a] hover:text-[#f87171] bg-transparent border-none cursor-pointer text-xs px-1">✕</button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <button onClick={() => { setStep('choose'); setFiles([]) }} className="bg-transparent border-none text-[#71717a] cursor-pointer text-sm text-left">← Back</button>
-            </div>
-
-            <div className="p-3 border-t border-[#27272a] flex gap-2">
-              <button onClick={onClose} className="flex-1 py-2 border border-[#3f3f46] rounded-lg bg-transparent text-[#a1a1aa] cursor-pointer text-sm">Cancel</button>
-              <button onClick={submit} disabled={!canPublish || uploading}
-                className={`flex-[2] py-2 bg-[#7c3aed] text-white rounded-lg text-sm font-medium border-none ${canPublish && !uploading ? 'cursor-pointer hover:bg-[#6d28d9]' : 'opacity-40 cursor-not-allowed'}`}>
-                {uploading ? progress : 'Publish Chapter'}
-              </button>
-            </div>
-          </>
-        )}
+        {step === 'form' && uploadType === 'series' && (<>
+          <div className="p-4 flex flex-col gap-3">
+            {uploadError && <div className="bg-red-500/10 border border-red-500/30 text-red-400 text-xs rounded-xl p-2.5">{uploadError}</div>}
+            {mode === 'new' && (<div>
+              <label className="block text-xs text-[#71717a] mb-1">Series Title *</label><input value={seriesTitle} onChange={e => setSeriesTitle(e.target.value)} placeholder="My Awesome Series" className="w-full bg-[#27272a] border border-[#3f3f46] rounded-lg p-2 text-[#e4e4e7] text-sm outline-none focus:border-[#a855f7]" />
+              <div className="mt-2.5"><label className="block text-xs text-[#71717a] mb-1.5">Thumbnail <span className="text-[#52525b]">(optional, max 5MB)</span></label>
+                <div className="flex items-center gap-3"><div className="w-12 h-[72px] rounded-lg bg-[#27272a] border border-dashed border-[#3f3f46] flex items-center justify-center shrink-0 overflow-hidden">{thumbPreview ? <img src={thumbPreview} className="w-full h-full object-cover" alt="" /> : <span className="text-[#52525b] text-lg">\ud83d\udcf7</span>}</div>
+                <div className="flex flex-col gap-1.5"><button type="button" onClick={() => thumbRef.current?.click()} className="px-3 py-1.5 border border-[#3f3f46] rounded-lg bg-transparent text-[#c084fc] cursor-pointer text-xs">{thumbPreview ? 'Change Image' : 'Choose Image'}</button>
+                {thumbPreview && <button type="button" onClick={() => { setThumbFile(null); setThumbPreview(null) }} className="px-3 py-1.5 border border-[#3f3f46] rounded-lg bg-transparent text-[#71717a] cursor-pointer text-xs hover:text-red-400">Remove</button>}</div>
+                <input ref={thumbRef} type="file" className="hidden" accept=".jpg,.jpeg,.png,.webp" onChange={handleThumb} /></div></div>
+            </div>)}
+            <div><label className="block text-xs text-[#71717a] mb-1">Chapter Title *</label><input value={chapterTitle} onChange={e => setChapterTitle(e.target.value)} placeholder="Chapter 1" className="w-full bg-[#27272a] border border-[#3f3f46] rounded-lg p-2 text-[#e4e4e7] text-sm outline-none focus:border-[#a855f7]" /></div>
+            <div><label className="block text-xs text-[#71717a] mb-1">Chapter #</label><input type="number" value={chapterNumber} onChange={e => setChapterNumber(parseInt(e.target.value) || 1)} min={1} className="w-20 bg-[#27272a] border border-[#3f3f46] rounded-lg p-2 text-[#e4e4e7] text-sm outline-none focus:border-[#a855f7]" /></div>
+            {mode === 'new' && (<div><label className="block text-xs text-[#71717a] mb-1.5">Format *</label><div className="flex gap-1.5">{['Series', 'One Shot'].map(f => (<button key={f} onClick={() => setFormat(f)} className={'px-4 py-1.5 rounded-lg cursor-pointer text-xs font-medium border ' + (format === f ? 'border-[#a855f7] text-[#c084fc] bg-purple-500/10' : 'border-[#3f3f46] text-[#71717a] bg-transparent')}>{f}</button>))}</div></div>)}
+            <div><div className="flex items-center gap-1 mb-1.5"><label className="text-xs text-[#71717a]">Content Rating *</label><MatureTip mobile={isMobile} /></div>
+              <div className="flex gap-1.5">
+                <button onClick={() => setRating('General')} className={'px-3 py-1.5 rounded-lg cursor-pointer text-xs font-medium border ' + (rating === 'General' ? 'border-green-500 text-green-400 bg-green-500/[0.08]' : 'border-[#3f3f46] text-[#71717a] bg-transparent')}>General</button>
+                <button onClick={() => setRating('Mature')} className={'px-3 py-1.5 rounded-lg cursor-pointer text-xs font-medium border ' + (rating === 'Mature' ? 'border-amber-500 text-amber-400 bg-amber-500/[0.08]' : 'border-[#3f3f46] text-[#71717a] bg-transparent')}>Mature</button>
+              </div></div>
+            <div><label className="block text-xs text-[#71717a] mb-1.5">Reading Mode</label><div className="flex gap-1.5">
+              <button onClick={() => setReadingMode('webtoon')} className={'px-3 py-1.5 rounded-lg cursor-pointer text-xs font-medium border ' + (readingMode === 'webtoon' ? 'border-[#a855f7] text-[#c084fc] bg-purple-500/10' : 'border-[#3f3f46] text-[#71717a] bg-transparent')}>\u25bc Webtoon</button>
+              <button onClick={() => setReadingMode('horizontal')} className={'px-3 py-1.5 rounded-lg cursor-pointer text-xs font-medium border ' + (readingMode === 'horizontal' ? 'border-[#a855f7] text-[#c084fc] bg-purple-500/10' : 'border-[#3f3f46] text-[#71717a] bg-transparent')}>\u25c0\u25b6 Horizontal</button>
+            </div></div>
+            {mode === 'new' && (<div className="border-t border-[#27272a] pt-3"><label className="block text-xs text-[#71717a] mb-1.5">Genres <span className="text-[#52525b]">(up to 3)</span></label>
+              <div className="flex gap-1 flex-wrap mb-3">{GENRES_ALL.map(g => (<button key={g} onClick={() => { const n = new Set(genres); if (n.has(g)) n.delete(g); else if (n.size < 3) n.add(g); else return; setGenres(n) }} className={'px-2.5 py-1 rounded-full text-[0.73rem] cursor-pointer border ' + (genres.has(g) ? 'border-[#a855f7] text-[#c084fc] bg-purple-500/10' : genres.size >= 3 ? 'border-[#27272a] text-[#3f3f46] bg-transparent cursor-not-allowed' : 'border-[#3f3f46] text-[#71717a] bg-transparent')}>{g}</button>))}</div>
+              <label className="block text-xs text-[#71717a] mb-1">Description</label>
+              <textarea value={desc} onChange={e => setDesc(e.target.value)} rows={2} placeholder="Brief description..." className="w-full bg-[#27272a] border border-[#3f3f46] rounded-lg p-2 text-[#e4e4e7] text-sm outline-none resize-y font-[inherit] focus:border-[#a855f7]" />
+            </div>)}
+            <div><label className="block text-xs text-[#71717a] mb-1.5">Chapter Pages <span className="text-[#52525b]">(max 5MB each, 30MB total)</span></label>
+              <div onClick={() => fileRef.current?.click()} className="border-2 border-dashed border-[#3f3f46] rounded-xl p-6 md:p-10 text-center cursor-pointer hover:border-[#a855f7]">
+                <input ref={fileRef} type="file" className="hidden" accept=".jpg,.jpeg,.png,.webp" multiple onChange={handleFiles} />
+                <p className="text-sm font-medium text-[#d4d4d8]">{files.length ? files.length + ' page(s) selected' : 'Click to select pages'}</p>
+                <p className="text-[0.71rem] text-[#71717a] mt-0.5">{files.length ? 'Click to add more' : 'Select multiple images at once'}</p>
+                {files.length > 0 && <div className="mt-2 max-h-[100px] overflow-y-auto text-left" onClick={e => e.stopPropagation()}>{files.map((f, i) => (<div key={i} className="flex items-center gap-2 py-1 border-b border-[#27272a] text-xs"><span className="text-[#52525b] w-5 text-center">{i+1}</span><span className="flex-1 truncate">{f.name}</span><span className="text-[#52525b]">{(f.size/1024).toFixed(0)}KB</span><button onClick={() => setFiles(p => p.filter((_,j) => j!==i))} className="text-[#71717a] hover:text-[#f87171] bg-transparent border-none cursor-pointer text-xs px-1">\u2715</button></div>))}</div>}
+              </div></div>
+            <button onClick={() => { setStep('choose'); setFiles([]) }} className="bg-transparent border-none text-[#71717a] cursor-pointer text-sm text-left">\u2190 Back</button>
+          </div>
+          <div className="p-3 border-t border-[#27272a] flex gap-2">
+            <button onClick={onClose} className="flex-1 py-2 border border-[#3f3f46] rounded-lg bg-transparent text-[#a1a1aa] cursor-pointer text-sm">Cancel</button>
+            <button onClick={submit} disabled={!canPublish || uploading} className={'flex-[2] py-2 bg-[#7c3aed] text-white rounded-lg text-sm font-medium border-none ' + (canPublish && !uploading ? 'cursor-pointer hover:bg-[#6d28d9]' : 'opacity-40 cursor-not-allowed')}>{uploading ? progress : 'Publish Chapter'}</button>
+          </div>
+        </>)}
       </div>
     </div>
   )

@@ -47,8 +47,6 @@ export default function ReaderPage() {
   const [editText, setEditText] = useState('')
   const [replyingTo, setReplyingTo] = useState<string | null>(null)
   const [replyText, setReplyText] = useState('')
-  // Horizontal reading mode state
-  const [currentPage, setCurrentPage] = useState(0)
 
   useEffect(() => {
     let c = false
@@ -90,7 +88,6 @@ export default function ReaderPage() {
     const ch = chapters.find(c => c.chapter_number === currentCh)
     if (!ch) return
     setChapterViews(ch.views ?? 0)
-    setCurrentPage(0) // Reset page when switching chapters
     supabase.from('comments').select('*, profiles(display_name, handle, avatar_url)').eq('chapter_id', ch.id).order('created_at', { ascending: false })
       .then(({ data }: any) => setComments(data ?? []))
     supabase.from('chapters').update({ views: (ch.views ?? 0) + 1 }).eq('id', ch.id).then(() => {
@@ -235,9 +232,6 @@ export default function ReaderPage() {
   const topLevelComments = comments.filter(c => !c.parent_id)
   const topLevelSeriesComments = seriesComments.filter(c => !c.parent_id)
 
-  // Determine reading mode: chapter-level > series-level > default webtoon
-  const readingMode = currentChData?.reading_mode || series.reading_mode || 'webtoon'
-
   return (
     <div id="reader-scroll" className="min-h-screen bg-black">
       <div className="bg-[#09090b]/95 backdrop-blur border-b border-[#27272a] sticky top-0 z-20">
@@ -260,16 +254,15 @@ export default function ReaderPage() {
                 <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
                 <span className="text-[#a1a1aa] font-medium">{fmtNum(chapterViews)}</span> Ch. {currentCh} Views
               </span>}
-              {readingMode === 'horizontal' && (
-                <span className="text-[0.68rem] text-[#a855f7] font-medium">◀▶ Horizontal</span>
-              )}
             </div>
           </div>
           <div className="flex flex-col gap-1.5 text-xs shrink-0">
+            {/* Like - prominent */}
             <button onClick={toggleLike} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border cursor-pointer text-sm font-medium transition-all ${liked ? 'bg-red-500/15 border-red-500/40 text-[#f87171]' : 'bg-transparent border-[#3f3f46] text-[#a1a1aa] hover:border-red-500/40'}`}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill={liked ? '#f87171' : 'none'} stroke="currentColor" strokeWidth="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
               {fmtNum(series.total_likes)} {liked ? 'Liked' : 'Like'}
             </button>
+            {/* Follow - prominent */}
             <button onClick={toggleFollow} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border cursor-pointer text-sm font-medium transition-all ${isFollowing ? 'bg-purple-500/15 border-purple-500/40 text-[#c084fc]' : 'bg-[#7c3aed] border-[#7c3aed] text-white hover:bg-[#6d28d9]'}`}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
               {isFollowing ? 'Following' : 'Follow'}
@@ -304,44 +297,18 @@ export default function ReaderPage() {
         )}
       </div>
 
-      {/* Content area — supports both reading modes */}
       <div className={`max-w-[800px] mx-auto p-1.5 md:p-3 transition-opacity duration-200 ${panelFade ? 'opacity-0' : 'opacity-100'}`}>
-        {panels ? (
-          readingMode === 'horizontal' ? (
-            /* ── Horizontal Pages mode ──────────────────────────── */
-            <div className="relative">
-              <img src={panels[currentPage]} className="w-full rounded-lg" alt={`Page ${currentPage + 1}`} />
-              <div className="flex items-center justify-center gap-3 mt-4">
-                <button onClick={() => setCurrentPage(p => Math.max(0, p - 1))} disabled={currentPage === 0}
-                  className={`px-5 py-2.5 border rounded-xl text-sm cursor-pointer ${currentPage === 0 ? 'border-[#27272a] text-[#3f3f46] cursor-not-allowed' : 'border-[#3f3f46] text-[#a1a1aa] hover:border-[#a855f7]'} bg-transparent`}>
-                  ◀ Prev Page
-                </button>
-                <span className="text-sm text-[#71717a] min-w-[60px] text-center">{currentPage + 1} / {panels.length}</span>
-                <button onClick={() => setCurrentPage(p => Math.min(panels.length - 1, p + 1))} disabled={currentPage === panels.length - 1}
-                  className={`px-5 py-2.5 border rounded-xl text-sm cursor-pointer ${currentPage === panels.length - 1 ? 'border-[#27272a] text-[#3f3f46] cursor-not-allowed' : 'border-[#3f3f46] text-[#a1a1aa] hover:border-[#a855f7]'} bg-transparent`}>
-                  Next Page ▶
-                </button>
-              </div>
-            </div>
-          ) : (
-            /* ── Webtoon vertical scroll mode (default) ────────── */
-            panels.map((url: string, pi: number) => (
-              <img key={pi} src={url} className="w-full" style={{ marginTop: pi > 0 ? '-4px' : '0' }} alt={`Page ${pi+1}`} />
-            ))
-          )
-        ) : (
-          <div className="w-full aspect-[3/4] flex items-center justify-center text-[#52525b] text-sm bg-[#18181b] rounded-xl">
-            {maxCh === 0 ? 'No chapters yet' : 'No pages in this chapter'}
-          </div>
-        )}
+        {panels ? panels.map((url: string, pi: number) => (
+          <img key={pi} src={url} className="w-full" style={{ marginTop: pi > 0 ? '-4px' : '0' }} alt={`Page ${pi+1}`} />
+        )) : <div className="w-full aspect-[3/4] flex items-center justify-center text-[#52525b] text-sm bg-[#18181b] rounded-xl">{maxCh === 0 ? 'No chapters yet' : 'No pages in this chapter'}</div>}
       </div>
 
       {maxCh > 0 && (
         <div className="max-w-[800px] mx-auto mt-4 flex gap-2 px-3">
           <button onClick={() => { if (currentCh > 1) switchChapter(currentCh - 1); else show('First chapter!') }}
-            className="flex-1 py-2.5 border border-[#3f3f46] rounded-xl bg-transparent text-[#a1a1aa] cursor-pointer text-sm hover:border-[#a855f7] flex items-center justify-center gap-1">Prev Chapter</button>
+            className="flex-1 py-2.5 border border-[#3f3f46] rounded-xl bg-transparent text-[#a1a1aa] cursor-pointer text-sm hover:border-[#a855f7] flex items-center justify-center gap-1">Prev</button>
           <button onClick={() => { if (currentCh < maxCh) switchChapter(currentCh + 1); else show("You're caught up!") }}
-            className="flex-1 py-2.5 border border-[#3f3f46] rounded-xl bg-transparent text-[#a1a1aa] cursor-pointer text-sm hover:border-[#a855f7] flex items-center justify-center gap-1">Next Chapter</button>
+            className="flex-1 py-2.5 border border-[#3f3f46] rounded-xl bg-transparent text-[#a1a1aa] cursor-pointer text-sm hover:border-[#a855f7] flex items-center justify-center gap-1">Next</button>
         </div>
       )}
 
