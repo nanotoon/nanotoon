@@ -5,8 +5,8 @@ compatibility_flags = ["nodejs_compat"]
 account_id = "249b9efccb2271a8dd495e5e32e1c8df"
 
 [vars]
-NEXT_PUBLIC_SUPABASE_URL = "https://hzixbycndfjqxtmgjlyd.supabase.co"
-NEXT_PUBLIC_SUPABASE_ANON_KEY = "sb_publishable_oI1NcKqMpaH-maqxkvZDqw_tpMmYFgP"
+NEXT_PUBLIC_SUPABASE_URL = https://hzixbycndfjqxtmgjlyd.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY = sb_publishable_oI1NcKqMpaH-maqxkvZDqw_tpMmYFgP
 
 [assets]
 directory = ".open-next/assets"
