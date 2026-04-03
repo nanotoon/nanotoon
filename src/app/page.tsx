@@ -30,7 +30,7 @@ export default function HomePage() {
         if (formatFilter !== 'All') latQ = latQ.eq('format', formatFilter)
         const [mv, lt] = await Promise.all([mvQ, latQ])
         if (!cancelled) { setMostViewed(mv.data ?? []); setLatest(lt.data ?? []) }
-      } catch {} finally { if (!cancelled) setLoading(false) }
+      } catch (err: any) { console.error('Home page load error:', err) } finally { if (!cancelled) setLoading(false) }
     }
     load()
     return () => { cancelled = true }

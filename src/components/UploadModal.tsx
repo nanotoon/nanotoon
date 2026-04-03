@@ -6,7 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 
 const MAX_FILE = 5 * 1024 * 1024
 const MAX_TOTAL = 30 * 1024 * 1024
-const MATURE_TEXT = "Violence & Dark Themes: Intense graphic violence and realistic blood are permitted in Mature-tagged chapters. Content solely depicting sadistic torture without narrative purpose is prohibited.\n\nNudity — Non-sexual nudity is allowed if genitalia are fully obscured/censored. Pornographic content is strictly prohibited.\n\nProhibited:\n\u2022 Sexual content involving minors — zero tolerance\n\u2022 Instructions for making drugs, explosives, or weapons\n\u2022 Content promoting self-harm or suicide\n\u2022 Malware, scams, or phishing\n\u2022 Content inciting real-world violence"
+const MATURE_TEXT = "Violence & Dark Themes: Intense graphic violence and realistic blood are permitted in Mature-tagged chapters. Content solely depicting sadistic torture without narrative purpose is prohibited.\n\nNudity — Non-sexual nudity is allowed if genitalia are fully obscured/censored. Pornographic content is strictly prohibited.\n\nProhibited:\n• Sexual content involving minors — zero tolerance\n• Instructions for making drugs, explosives, or weapons\n• Content promoting self-harm or suicide\n• Malware, scams, or phishing\n• Content inciting real-world violence"
 
 function MatureTip({ mobile }: { mobile: boolean }) {
   const [open, setOpen] = useState(false)
@@ -92,17 +92,33 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
     const r = new FileReader(); r.onload = ev => setThumbPreview(ev.target?.result as string); r.readAsDataURL(f)
   }
 
+  async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+    let timer: ReturnType<typeof setTimeout>
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error(label + ' timed out after ' + (ms/1000) + 's — check your Supabase connection')), ms)
+    })
+    try { return await Promise.race([promise, timeout]) }
+    finally { clearTimeout(timer!) }
+  }
+
   async function ensureProfile() {
     if (!user) throw new Error('Not logged in')
     try {
-      const { data } = await supabase.from('profiles').select('id').eq('id', user.id).maybeSingle()
+      const { data, error } = await withTimeout(
+        supabase.from('profiles').select('id').eq('id', user.id).maybeSingle(),
+        15000, 'Profile check'
+      )
+      if (error) console.warn('Profile select error (will try insert):', error.message)
       if (data) return
-    } catch {
-      // If select fails (RLS issue), try insert anyway
+    } catch (err: any) {
+      console.warn('Profile select failed (will try insert):', err?.message)
     }
     const dn = user.user_metadata?.display_name || user.user_metadata?.full_name || user.email?.split('@')[0] || 'Creator'
     const h = (user.user_metadata?.handle || user.email?.split('@')[0]?.replace(/[^a-zA-Z0-9_]/g, '') || 'user_' + user.id.slice(0, 8)).toLowerCase()
-    const { error } = await supabase.from('profiles').insert({ id: user.id, display_name: dn, handle: h })
+    const { error } = await withTimeout(
+      supabase.from('profiles').insert({ id: user.id, display_name: dn, handle: h }),
+      15000, 'Profile create'
+    )
     if (error && !error.message.includes('duplicate') && !error.code?.includes('23505')) {
       throw new Error('Profile setup failed: ' + error.message)
     }
@@ -110,12 +126,15 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
 
   async function submit() {
     if (!user || !canPublish) return
+    if (files.length === 0) { setUploadError('Please select at least one image'); onToast('Please select at least one image'); return }
     setUploading(true); setUploadError(''); setProgress('Preparing...')
     try {
       await ensureProfile()
+      setProgress('Starting upload...')
       if (uploadType === 'gallery') await doGalleryUpload()
       else await doSeriesUpload()
     } catch (err: any) {
+      console.error('Upload error:', err)
       const msg = err?.message || 'Unexpected error'
       setUploadError(msg); onToast('Error: ' + msg)
     }
@@ -159,7 +178,7 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
     })
     if (chErr) throw new Error(chErr.message || 'Chapter save failed')
     await supabase.from('series').update({ updated_at: new Date().toISOString() }).eq('id', seriesId)
-    onToast('Chapter published! \ud83c\udf89'); onClose()
+    onToast('Chapter published! 🎉'); onClose()
   }
 
   async function doGalleryUpload() {
@@ -187,7 +206,7 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
       reading_mode: gReadMode,
     })
     if (error) throw new Error(error.message)
-    onToast('Gallery published! \ud83c\udf89'); onClose()
+    onToast('Gallery published! 🎉'); onClose()
   }
 
   return (
@@ -205,18 +224,18 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
             <h3 className="text-sm text-[#71717a]">Series</h3>
             <button onClick={() => { setUploadType('series'); setMode('new'); setStep('form') }}
               className="w-full p-4 md:p-6 border border-[#3f3f46] rounded-xl bg-transparent text-left cursor-pointer hover:border-[#a855f7]">
-              <div className="font-semibold text-sm md:text-lg mb-0.5">\ud83d\udcc1 Create a new series</div>
+              <div className="font-semibold text-sm md:text-lg mb-0.5">📁 Create a new series</div>
               <div className="text-xs md:text-base text-[#71717a]">Upload the first chapter of a brand new series</div>
             </button>
             <button onClick={() => { setUploadType('series'); setMode('existing'); setStep('existing') }}
               className="w-full p-4 md:p-6 border border-[#3f3f46] rounded-xl bg-transparent text-left cursor-pointer hover:border-[#a855f7]">
-              <div className="font-semibold text-sm md:text-lg mb-0.5">\u2795 Add chapter to existing series</div>
+              <div className="font-semibold text-sm md:text-lg mb-0.5">➕ Add chapter to existing series</div>
               <div className="text-xs md:text-base text-[#71717a]">Upload a new chapter to one of your current series</div>
             </button>
             <h3 className="text-sm text-[#71717a] mt-2">Gallery</h3>
             <button onClick={() => { setUploadType('gallery'); setStep('form') }}
               className="w-full p-4 md:p-6 border border-[#3f3f46] rounded-xl bg-transparent text-left cursor-pointer hover:border-[#a855f7]">
-              <div className="font-semibold text-sm md:text-lg mb-0.5">\ud83c\udfa8 Upload to Gallery</div>
+              <div className="font-semibold text-sm md:text-lg mb-0.5">🎨 Upload to Gallery</div>
               <div className="text-xs md:text-base text-[#71717a]">Single artwork or album</div>
             </button>
           </div>
@@ -230,13 +249,13 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
                 {mySeries.map((s: any) => (
                   <div key={s.id} onClick={() => { setSelectedSeriesId(s.id); setReadingMode(s.reading_mode || 'webtoon'); setTimeout(() => setStep('form'), 150) }}
                     className={'p-2.5 border rounded-lg cursor-pointer flex items-center gap-2.5 ' + (selectedSeriesId === s.id ? 'border-[#a855f7] bg-purple-500/10' : 'border-[#3f3f46] hover:border-[#a855f7]')}>
-                    {s.thumbnail_url ? <img src={s.thumbnail_url} className="w-8 h-12 rounded-md shrink-0 object-cover" alt={s.title} /> : <div className="w-8 h-12 rounded-md shrink-0 bg-[#27272a] flex items-center justify-center text-lg">\ud83d\udcd6</div>}
+                    {s.thumbnail_url ? <img src={s.thumbnail_url} className="w-8 h-12 rounded-md shrink-0 object-cover" alt={s.title} /> : <div className="w-8 h-12 rounded-md shrink-0 bg-[#27272a] flex items-center justify-center text-lg">📖</div>}
                     <div><div className="font-medium text-sm">{s.title}</div><div className="text-[0.71rem] text-[#71717a]">{s.format}</div></div>
                   </div>
                 ))}
               </div>
             )}
-            <button onClick={() => setStep('choose')} className="bg-transparent border-none text-[#71717a] cursor-pointer text-sm">\u2190 Back</button>
+            <button onClick={() => setStep('choose')} className="bg-transparent border-none text-[#71717a] cursor-pointer text-sm">← Back</button>
           </div>
         )}
 
@@ -248,17 +267,17 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
             <div><label className="block text-xs text-[#71717a] mb-1">Tags <span className="text-[#52525b]">(comma separated)</span></label><input value={gTags} onChange={e => setGTags(e.target.value)} placeholder="fantasy, dark" className="w-full bg-[#27272a] border border-[#3f3f46] rounded-lg p-2 text-[#e4e4e7] text-sm outline-none focus:border-[#a855f7]" /></div>
             <div className="flex items-center gap-2"><label className="text-xs text-[#71717a]">Mature</label><MatureTip mobile={isMobile} /><button onClick={() => setGMature(!gMature)} className={'w-9 h-5 rounded-full border-none cursor-pointer relative shrink-0 ' + (gMature ? 'bg-amber-500' : 'bg-[#3f3f46]')}><span className={'absolute top-[1.5px] w-4 h-4 bg-white rounded-full transition-all ' + (gMature ? 'right-[2px]' : 'left-[1.5px]')}></span></button></div>
             <div><label className="block text-xs text-[#71717a] mb-1.5">Reading Mode</label><div className="flex gap-1.5">
-              <button onClick={() => setGReadMode('horizontal')} className={'px-3 py-1.5 rounded-lg cursor-pointer text-xs font-medium border ' + (gReadMode === 'horizontal' ? 'border-[#a855f7] text-[#c084fc] bg-purple-500/10' : 'border-[#3f3f46] text-[#71717a] bg-transparent')}>\u25c0\u25b6 Horizontal</button>
-              <button onClick={() => setGReadMode('webtoon')} className={'px-3 py-1.5 rounded-lg cursor-pointer text-xs font-medium border ' + (gReadMode === 'webtoon' ? 'border-[#a855f7] text-[#c084fc] bg-purple-500/10' : 'border-[#3f3f46] text-[#71717a] bg-transparent')}>\u25bc Webtoon</button>
+              <button onClick={() => setGReadMode('horizontal')} className={'px-3 py-1.5 rounded-lg cursor-pointer text-xs font-medium border ' + (gReadMode === 'horizontal' ? 'border-[#a855f7] text-[#c084fc] bg-purple-500/10' : 'border-[#3f3f46] text-[#71717a] bg-transparent')}>◀▶ Horizontal</button>
+              <button onClick={() => setGReadMode('webtoon')} className={'px-3 py-1.5 rounded-lg cursor-pointer text-xs font-medium border ' + (gReadMode === 'webtoon' ? 'border-[#a855f7] text-[#c084fc] bg-purple-500/10' : 'border-[#3f3f46] text-[#71717a] bg-transparent')}>▼ Webtoon</button>
             </div></div>
-            {files.length > 1 && (<div><label className="block text-xs text-[#71717a] mb-1.5">Album Thumbnail</label><div className="flex items-center gap-3"><div className="w-12 h-[72px] rounded-lg bg-[#27272a] border border-dashed border-[#3f3f46] flex items-center justify-center shrink-0 overflow-hidden">{thumbPreview ? <img src={thumbPreview} className="w-full h-full object-cover" alt="" /> : <span className="text-[#52525b] text-lg">\ud83d\udcf7</span>}</div><button type="button" onClick={() => thumbRef.current?.click()} className="px-3 py-1.5 border border-[#3f3f46] rounded-lg bg-transparent text-[#c084fc] cursor-pointer text-xs">{thumbPreview ? 'Change' : 'Choose'}</button><input ref={thumbRef} type="file" className="hidden" accept=".jpg,.jpeg,.png,.webp" onChange={handleThumb} /></div></div>)}
+            {files.length > 1 && (<div><label className="block text-xs text-[#71717a] mb-1.5">Album Thumbnail</label><div className="flex items-center gap-3"><div className="w-12 h-[72px] rounded-lg bg-[#27272a] border border-dashed border-[#3f3f46] flex items-center justify-center shrink-0 overflow-hidden">{thumbPreview ? <img src={thumbPreview} className="w-full h-full object-cover" alt="" /> : <span className="text-[#52525b] text-lg">📷</span>}</div><button type="button" onClick={() => thumbRef.current?.click()} className="px-3 py-1.5 border border-[#3f3f46] rounded-lg bg-transparent text-[#c084fc] cursor-pointer text-xs">{thumbPreview ? 'Change' : 'Choose'}</button><input ref={thumbRef} type="file" className="hidden" accept=".jpg,.jpeg,.png,.webp" onChange={handleThumb} /></div></div>)}
             <div><label className="block text-xs text-[#71717a] mb-1.5">Images <span className="text-[#52525b]">(max 5MB each, 30MB total)</span></label>
               <div onClick={() => fileRef.current?.click()} className="border-2 border-dashed border-[#3f3f46] rounded-xl p-6 md:p-10 text-center cursor-pointer hover:border-[#a855f7]">
                 <input ref={fileRef} type="file" className="hidden" accept=".jpg,.jpeg,.png,.webp" multiple onChange={handleFiles} />
                 <p className="text-sm font-medium text-[#d4d4d8]">{files.length ? files.length + ' image(s) selected' : 'Click to select images'}</p>
-                {files.length > 0 && <div className="mt-2 max-h-[100px] overflow-y-auto text-left" onClick={e => e.stopPropagation()}>{files.map((f, i) => (<div key={i} className="flex items-center gap-2 py-1 border-b border-[#27272a] text-xs"><span className="text-[#52525b] w-5 text-center">{i+1}</span><span className="flex-1 truncate">{f.name}</span><span className="text-[#52525b]">{(f.size/1024).toFixed(0)}KB</span><button onClick={() => setFiles(p => p.filter((_,j) => j!==i))} className="text-[#71717a] hover:text-[#f87171] bg-transparent border-none cursor-pointer text-xs px-1">\u2715</button></div>))}</div>}
+                {files.length > 0 && <div className="mt-2 max-h-[100px] overflow-y-auto text-left" onClick={e => e.stopPropagation()}>{files.map((f, i) => (<div key={i} className="flex items-center gap-2 py-1 border-b border-[#27272a] text-xs"><span className="text-[#52525b] w-5 text-center">{i+1}</span><span className="flex-1 truncate">{f.name}</span><span className="text-[#52525b]">{(f.size/1024).toFixed(0)}KB</span><button onClick={() => setFiles(p => p.filter((_,j) => j!==i))} className="text-[#71717a] hover:text-[#f87171] bg-transparent border-none cursor-pointer text-xs px-1">✕</button></div>))}</div>}
               </div></div>
-            <button onClick={() => { setStep('choose'); setFiles([]) }} className="bg-transparent border-none text-[#71717a] cursor-pointer text-sm text-left">\u2190 Back</button>
+            <button onClick={() => { setStep('choose'); setFiles([]) }} className="bg-transparent border-none text-[#71717a] cursor-pointer text-sm text-left">← Back</button>
           </div>
           <div className="p-3 border-t border-[#27272a] flex gap-2">
             <button onClick={onClose} className="flex-1 py-2 border border-[#3f3f46] rounded-lg bg-transparent text-[#a1a1aa] cursor-pointer text-sm">Cancel</button>
@@ -272,7 +291,7 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
             {mode === 'new' && (<div>
               <label className="block text-xs text-[#71717a] mb-1">Series Title *</label><input value={seriesTitle} onChange={e => setSeriesTitle(e.target.value)} placeholder="My Awesome Series" className="w-full bg-[#27272a] border border-[#3f3f46] rounded-lg p-2 text-[#e4e4e7] text-sm outline-none focus:border-[#a855f7]" />
               <div className="mt-2.5"><label className="block text-xs text-[#71717a] mb-1.5">Thumbnail <span className="text-[#52525b]">(optional, max 5MB)</span></label>
-                <div className="flex items-center gap-3"><div className="w-12 h-[72px] rounded-lg bg-[#27272a] border border-dashed border-[#3f3f46] flex items-center justify-center shrink-0 overflow-hidden">{thumbPreview ? <img src={thumbPreview} className="w-full h-full object-cover" alt="" /> : <span className="text-[#52525b] text-lg">\ud83d\udcf7</span>}</div>
+                <div className="flex items-center gap-3"><div className="w-12 h-[72px] rounded-lg bg-[#27272a] border border-dashed border-[#3f3f46] flex items-center justify-center shrink-0 overflow-hidden">{thumbPreview ? <img src={thumbPreview} className="w-full h-full object-cover" alt="" /> : <span className="text-[#52525b] text-lg">📷</span>}</div>
                 <div className="flex flex-col gap-1.5"><button type="button" onClick={() => thumbRef.current?.click()} className="px-3 py-1.5 border border-[#3f3f46] rounded-lg bg-transparent text-[#c084fc] cursor-pointer text-xs">{thumbPreview ? 'Change Image' : 'Choose Image'}</button>
                 {thumbPreview && <button type="button" onClick={() => { setThumbFile(null); setThumbPreview(null) }} className="px-3 py-1.5 border border-[#3f3f46] rounded-lg bg-transparent text-[#71717a] cursor-pointer text-xs hover:text-red-400">Remove</button>}</div>
                 <input ref={thumbRef} type="file" className="hidden" accept=".jpg,.jpeg,.png,.webp" onChange={handleThumb} /></div></div>
@@ -286,8 +305,8 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
                 <button onClick={() => setRating('Mature')} className={'px-3 py-1.5 rounded-lg cursor-pointer text-xs font-medium border ' + (rating === 'Mature' ? 'border-amber-500 text-amber-400 bg-amber-500/[0.08]' : 'border-[#3f3f46] text-[#71717a] bg-transparent')}>Mature</button>
               </div></div>
             <div><label className="block text-xs text-[#71717a] mb-1.5">Reading Mode</label><div className="flex gap-1.5">
-              <button onClick={() => setReadingMode('webtoon')} className={'px-3 py-1.5 rounded-lg cursor-pointer text-xs font-medium border ' + (readingMode === 'webtoon' ? 'border-[#a855f7] text-[#c084fc] bg-purple-500/10' : 'border-[#3f3f46] text-[#71717a] bg-transparent')}>\u25bc Webtoon</button>
-              <button onClick={() => setReadingMode('horizontal')} className={'px-3 py-1.5 rounded-lg cursor-pointer text-xs font-medium border ' + (readingMode === 'horizontal' ? 'border-[#a855f7] text-[#c084fc] bg-purple-500/10' : 'border-[#3f3f46] text-[#71717a] bg-transparent')}>\u25c0\u25b6 Horizontal</button>
+              <button onClick={() => setReadingMode('webtoon')} className={'px-3 py-1.5 rounded-lg cursor-pointer text-xs font-medium border ' + (readingMode === 'webtoon' ? 'border-[#a855f7] text-[#c084fc] bg-purple-500/10' : 'border-[#3f3f46] text-[#71717a] bg-transparent')}>▼ Webtoon</button>
+              <button onClick={() => setReadingMode('horizontal')} className={'px-3 py-1.5 rounded-lg cursor-pointer text-xs font-medium border ' + (readingMode === 'horizontal' ? 'border-[#a855f7] text-[#c084fc] bg-purple-500/10' : 'border-[#3f3f46] text-[#71717a] bg-transparent')}>◀▶ Horizontal</button>
             </div></div>
             {mode === 'new' && (<div className="border-t border-[#27272a] pt-3"><label className="block text-xs text-[#71717a] mb-1.5">Genres <span className="text-[#52525b]">(up to 3)</span></label>
               <div className="flex gap-1 flex-wrap mb-3">{GENRES_ALL.map(g => (<button key={g} onClick={() => { const n = new Set(genres); if (n.has(g)) n.delete(g); else if (n.size < 3) n.add(g); else return; setGenres(n) }} className={'px-2.5 py-1 rounded-full text-[0.73rem] cursor-pointer border ' + (genres.has(g) ? 'border-[#a855f7] text-[#c084fc] bg-purple-500/10' : genres.size >= 3 ? 'border-[#27272a] text-[#3f3f46] bg-transparent cursor-not-allowed' : 'border-[#3f3f46] text-[#71717a] bg-transparent')}>{g}</button>))}</div>
@@ -299,9 +318,9 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
                 <input ref={fileRef} type="file" className="hidden" accept=".jpg,.jpeg,.png,.webp" multiple onChange={handleFiles} />
                 <p className="text-sm font-medium text-[#d4d4d8]">{files.length ? files.length + ' page(s) selected' : 'Click to select pages'}</p>
                 <p className="text-[0.71rem] text-[#71717a] mt-0.5">{files.length ? 'Click to add more' : 'Select multiple images at once'}</p>
-                {files.length > 0 && <div className="mt-2 max-h-[100px] overflow-y-auto text-left" onClick={e => e.stopPropagation()}>{files.map((f, i) => (<div key={i} className="flex items-center gap-2 py-1 border-b border-[#27272a] text-xs"><span className="text-[#52525b] w-5 text-center">{i+1}</span><span className="flex-1 truncate">{f.name}</span><span className="text-[#52525b]">{(f.size/1024).toFixed(0)}KB</span><button onClick={() => setFiles(p => p.filter((_,j) => j!==i))} className="text-[#71717a] hover:text-[#f87171] bg-transparent border-none cursor-pointer text-xs px-1">\u2715</button></div>))}</div>}
+                {files.length > 0 && <div className="mt-2 max-h-[100px] overflow-y-auto text-left" onClick={e => e.stopPropagation()}>{files.map((f, i) => (<div key={i} className="flex items-center gap-2 py-1 border-b border-[#27272a] text-xs"><span className="text-[#52525b] w-5 text-center">{i+1}</span><span className="flex-1 truncate">{f.name}</span><span className="text-[#52525b]">{(f.size/1024).toFixed(0)}KB</span><button onClick={() => setFiles(p => p.filter((_,j) => j!==i))} className="text-[#71717a] hover:text-[#f87171] bg-transparent border-none cursor-pointer text-xs px-1">✕</button></div>))}</div>}
               </div></div>
-            <button onClick={() => { setStep('choose'); setFiles([]) }} className="bg-transparent border-none text-[#71717a] cursor-pointer text-sm text-left">\u2190 Back</button>
+            <button onClick={() => { setStep('choose'); setFiles([]) }} className="bg-transparent border-none text-[#71717a] cursor-pointer text-sm text-left">← Back</button>
           </div>
           <div className="p-3 border-t border-[#27272a] flex gap-2">
             <button onClick={onClose} className="flex-1 py-2 border border-[#3f3f46] rounded-lg bg-transparent text-[#a1a1aa] cursor-pointer text-sm">Cancel</button>
