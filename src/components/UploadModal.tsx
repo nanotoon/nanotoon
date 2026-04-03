@@ -92,12 +92,12 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
     const r = new FileReader(); r.onload = ev => setThumbPreview(ev.target?.result as string); r.readAsDataURL(f)
   }
 
-  async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  async function withTimeout<T>(promise: PromiseLike<T>, ms: number, label: string): Promise<T> {
     let timer: ReturnType<typeof setTimeout>
     const timeout = new Promise<never>((_, reject) => {
       timer = setTimeout(() => reject(new Error(label + ' timed out after ' + (ms/1000) + 's — check your Supabase connection')), ms)
     })
-    try { return await Promise.race([promise, timeout]) }
+    try { return await Promise.race([Promise.resolve(promise), timeout]) }
     finally { clearTimeout(timer!) }
   }
 
@@ -107,7 +107,7 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
       const { data, error } = await withTimeout(
         supabase.from('profiles').select('id').eq('id', user.id).maybeSingle(),
         15000, 'Profile check'
-      )
+      ) as { data: { id: string } | null; error: { message: string; code?: string } | null }
       if (error) console.warn('Profile select error (will try insert):', error.message)
       if (data) return
     } catch (err: any) {
@@ -118,7 +118,7 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
     const { error } = await withTimeout(
       supabase.from('profiles').insert({ id: user.id, display_name: dn, handle: h }),
       15000, 'Profile create'
-    )
+    ) as { data: null; error: { message: string; code?: string } | null }
     if (error && !error.message.includes('duplicate') && !error.code?.includes('23505')) {
       throw new Error('Profile setup failed: ' + error.message)
     }
