@@ -31,7 +31,7 @@ export default function FavoritesPage() {
         const { data } = await supabase
           .from('favorites')
           .select('*, series(*, profiles!series_author_id_fkey(display_name, handle, avatar_url))')
-          .eq('user_id', user.id)
+          .eq('user_id', user!.id)
           .order('created_at', { ascending: false }) as { data: any[] | null }
         clearTimeout(timeout)
         if (!cancelled) {

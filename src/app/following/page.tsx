@@ -35,7 +35,7 @@ export default function FollowingPage() {
         const { data } = await anonDb
           .from('follows')
           .select('*, profiles!follows_following_id_fkey(id, display_name, handle, avatar_url)')
-          .eq('follower_id', user.id)
+          .eq('follower_id', user!.id)
           .order('created_at', { ascending: false }) as { data: any[] | null }
         clearTimeout(timeout)
         if (!cancelled) {

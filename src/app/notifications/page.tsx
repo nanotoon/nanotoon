@@ -30,7 +30,7 @@ export default function NotificationsPage() {
       try {
         const { data } = await anonDb.from('notifications')
           .select('*, actor:profiles!notifications_actor_id_fkey(display_name, handle, avatar_url)')
-          .eq('user_id', user.id).order('created_at', { ascending: false }).limit(50) as { data: any[] | null }
+          .eq('user_id', user!.id).order('created_at', { ascending: false }).limit(50) as { data: any[] | null }
         clearTimeout(timeout)
         if (!cancelled) { setNotifs(data ?? []); setLoading(false) }
       } catch { clearTimeout(timeout); if (!cancelled) setLoading(false) }
@@ -41,7 +41,7 @@ export default function NotificationsPage() {
 
   async function markAllRead() {
     if (!user) return
-    await supabase.from('notifications').update({ read: true }).eq('user_id', user.id).eq('read', false)
+    await supabase.from('notifications').update({ read: true }).eq('user_id', user!.id).eq('read', false)
     setNotifs(prev => prev.map(n => ({ ...n, read: true })))
     show('All marked as read')
   }
