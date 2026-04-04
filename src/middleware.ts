@@ -29,11 +29,14 @@ export async function middleware(request: NextRequest) {
       },
     });
 
-    // getUser() validates + refreshes the token and updates cookies
-    // This is what Supabase officially recommends
-    // It MUST complete (no timeout) — if we abort this, the token stays expired
-    // and all client-side queries fail
-    const { data: { user } } = await supabase.auth.getUser();
+    // IMPORTANT: Using getSession() instead of getUser() here.
+    // getUser() makes a live network call to Supabase's auth server on EVERY request.
+    // On Cloudflare Workers, this round-trip can hang and cause the Worker to time out,
+    // which is what was causing pages to fail to load when logged in.
+    // getSession() reads directly from the cookie — zero network calls, instant.
+    // Auth validation still happens client-side via AuthContext.
+    const { data: { session } } = await supabase.auth.getSession();
+    const user = session?.user ?? null;
 
     const protectedPaths = ["/profile", "/settings", "/favorites", "/followers", "/following", "/notifications"];
     const isProtected = protectedPaths.some((p) => request.nextUrl.pathname.startsWith(p));
@@ -51,8 +54,6 @@ export async function middleware(request: NextRequest) {
     }
 
   } catch (error) {
-    // If getUser fails, just let the request through
-    // Client-side code handles auth state independently
     console.error("Middleware auth error (continuing):", error);
   }
 
