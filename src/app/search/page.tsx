@@ -46,12 +46,12 @@ function SearchContent() {
           .order('total_views', { ascending: false }).limit(20)
         
         const existingIds = new Set((data ?? []).map((s: any) => s.id))
-        extraResults = [...(genreMatch ?? []), ...(tagMatch ?? [])].filter(s => !existingIds.has(s.id))
+        extraResults = [...((genreMatch ?? []) as any[]), ...((tagMatch ?? []) as any[])].filter(s => !existingIds.has(s.id))
       }
 
       if (!cancelled) {
         const seen = new Set<string>()
-        const all = [...(data ?? []), ...extraResults].filter(s => {
+        const all = [...((data ?? []) as any[]), ...extraResults].filter(s => {
           if (seen.has(s.id)) return false
           seen.add(s.id); return true
         })
