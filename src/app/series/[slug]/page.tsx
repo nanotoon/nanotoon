@@ -55,14 +55,14 @@ export default function ReaderPage() {
     const timeout = setTimeout(() => { if (!c) setLoading(false) }, 10000)
     async function load() {
       try {
-        const { data: s } = await anonDb.from('series').select('*, profiles!series_author_id_fkey(display_name, handle, avatar_url)').eq('slug', slug).single()
+        const { data: s } = await anonDb.from('series').select('*, profiles!series_author_id_fkey(display_name, handle, avatar_url)').eq('slug', slug).single() as { data: any }
         if (!s || c) { setLoading(false); return }
         setSeries(s)
-        const { data: chs } = await anonDb.from('chapters').select('*').eq('series_id', s.id).order('chapter_number', { ascending: true })
+        const { data: chs } = await anonDb.from('chapters').select('*').eq('series_id', s.id).order('chapter_number', { ascending: true }) as { data: any[] | null }
         if (c) return
         setChapters(chs ?? [])
         if (chs?.length) { setCurrentCh(chs[chs.length - 1].chapter_number); setChapterViews(chs[chs.length - 1].views ?? 0) }
-        const { data: sc } = await anonDb.from('comments').select('*, profiles!comments_user_id_fkey(display_name, handle, avatar_url)').eq('series_id', s.id).is('chapter_id', null).order('created_at', { ascending: false })
+        const { data: sc } = await anonDb.from('comments').select('*, profiles!comments_user_id_fkey(display_name, handle, avatar_url)').eq('series_id', s.id).is('chapter_id', null).order('created_at', { ascending: false }) as { data: any[] | null }
         if (!c) setSeriesComments(sc ?? [])
         if (user) {
           const [lk, fv, fw] = await Promise.all([

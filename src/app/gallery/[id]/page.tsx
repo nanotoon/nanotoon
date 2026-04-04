@@ -25,11 +25,11 @@ export default function GalleryDetailPage() {
   useEffect(() => {
     let c = false
     async function load() {
-      const { data } = await anonDb.from('gallery').select('*, profiles!gallery_author_id_fkey(display_name, handle, avatar_url)').eq('id', id).single()
+      const { data } = await anonDb.from('gallery').select('*, profiles!gallery_author_id_fkey(display_name, handle, avatar_url)').eq('id', id).single() as { data: any }
       if (!c && data) {
         setItem(data)
-        await supabase.from('gallery').update({ total_views: (data.total_views??0)+1 }).eq('id', id)
-        const { data: cmts } = await anonDb.from('gallery_comments').select('*, profiles!gallery_comments_user_id_fkey(display_name, handle, avatar_url)').eq('gallery_id', id).order('created_at', { ascending: false })
+        await supabase.from('gallery').update({ total_views: ((data as any).total_views??0)+1 }).eq('id', id)
+        const { data: cmts } = await anonDb.from('gallery_comments').select('*, profiles!gallery_comments_user_id_fkey(display_name, handle, avatar_url)').eq('gallery_id', id).order('created_at', { ascending: false }) as { data: any[] | null }
         if (!c) setComments(cmts ?? [])
         if (user) { const { data: lk } = await supabase.from('gallery_likes').select('*').eq('user_id', user.id).eq('gallery_id', id).maybeSingle(); if (!c) setLiked(!!lk) }
       }
