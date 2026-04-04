@@ -5,6 +5,7 @@ import { Avatar } from '@/components/Avatar'
 import { useToast } from '@/components/Toast'
 import { useAuth } from '@/contexts/AuthContext'
 import { createClient } from '@/lib/supabase/client'
+import { createAnonClient } from '@/lib/supabase/anon'
 
 function timeAgo(d: string) {
   const m = Math.floor((Date.now() - new Date(d).getTime()) / 60000)
@@ -16,6 +17,7 @@ export default function NotificationsPage() {
   const { show } = useToast()
   const { user, loading: authLoading } = useAuth()
   const supabase = useMemo(() => createClient(), [])
+  const anonDb = useMemo(() => createAnonClient(), [])
   const [notifs, setNotifs] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -24,7 +26,7 @@ export default function NotificationsPage() {
     if (!user) { setLoading(false); return }
     let cancelled = false
     const timeout = setTimeout(() => { if (!cancelled) setLoading(false) }, 8000)
-    supabase.from('notifications')
+    anonDb.from('notifications')
       .select('*, actor:profiles!notifications_actor_id_fkey(display_name, handle, avatar_url)')
       .eq('user_id', user.id).order('created_at', { ascending: false }).limit(50)
       .then(({ data }: any) => {

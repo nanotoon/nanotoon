@@ -1,12 +1,12 @@
 'use client'
 import { useState, useEffect, useMemo } from 'react'
 import { SeriesCard } from '@/components/SeriesCard'
-import { createClient } from '@/lib/supabase/client'
+import { createAnonClient } from '@/lib/supabase/anon'
 import { useAuth } from '@/contexts/AuthContext'
 
 export default function FavoritesPage() {
   const { user, loading: authLoading } = useAuth()
-  const supabase = useMemo(() => createClient(), [])
+  const supabase = useMemo(() => createAnonClient(), [])
   const [favorites, setFavorites] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 

@@ -3,11 +3,11 @@ import { useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
 import { Avatar } from '@/components/Avatar'
 import { useAuth } from '@/contexts/AuthContext'
-import { createClient } from '@/lib/supabase/client'
+import { createAnonClient } from '@/lib/supabase/anon'
 
 export default function FollowersPage() {
   const { user } = useAuth()
-  const supabase = useMemo(() => createClient(), [])
+  const supabase = useMemo(() => createAnonClient(), [])
   const [followers, setFollowers] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 

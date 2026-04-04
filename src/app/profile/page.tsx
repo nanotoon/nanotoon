@@ -6,6 +6,7 @@ import { ShareModal } from '@/components/ShareModal'
 import { useToast } from '@/components/Toast'
 import { useAuth } from '@/contexts/AuthContext'
 import { createClient } from '@/lib/supabase/client'
+import { createAnonClient } from '@/lib/supabase/anon'
 import Link from 'next/link'
 
 function fmtNum(n: number) { if (n >= 1e6) return (n/1e6).toFixed(1).replace(/\.0$/,'')+'M'; if (n >= 1e3) return (n/1e3).toFixed(1).replace(/\.0$/,'')+'K'; return n.toString() }
@@ -14,6 +15,7 @@ export default function ProfilePage() {
   const { show } = useToast()
   const { user, profile, refreshProfile, loading: authLoading } = useAuth()
   const supabase = useMemo(() => createClient(), [])
+  const anonDb = useMemo(() => createAnonClient(), [])
   const [showShare, setShowShare] = useState(false)
   const [mySeries, setMySeries] = useState<any[]>([])
   const [followerCount, setFollowerCount] = useState(0)
@@ -27,10 +29,10 @@ export default function ProfilePage() {
     const timeout = setTimeout(() => { if (!c) setLoading(false) }, 8000)
     let c = false
     Promise.all([
-      supabase.from('series').select('*').eq('author_id', user.id).order('created_at', { ascending: false }),
-      supabase.from('follows').select('*', { count: 'exact', head: true }).eq('following_id', user.id),
-      supabase.from('follows').select('*', { count: 'exact', head: true }).eq('follower_id', user.id),
-    ]).then(([s, fr, fg]) => {
+      anonDb.from('series').select('*').eq('author_id', user.id).order('created_at', { ascending: false }),
+      anonDb.from('follows').select('*', { count: 'exact', head: true }).eq('following_id', user.id),
+      anonDb.from('follows').select('*', { count: 'exact', head: true }).eq('follower_id', user.id),
+    ]).then(([s, fr, fg]: any) => {
       if (!c) { setMySeries(s.data ?? []); setFollowerCount(fr.count ?? 0); setFollowingCount(fg.count ?? 0); setLoading(false) }
     })
     return () => { c = true; clearTimeout(timeout) }

@@ -4,11 +4,13 @@ import { Avatar } from '@/components/Avatar'
 import { useToast } from '@/components/Toast'
 import { useAuth } from '@/contexts/AuthContext'
 import { createClient } from '@/lib/supabase/client'
+import { createAnonClient } from '@/lib/supabase/anon'
 
 export default function FollowingPage() {
   const { show } = useToast()
   const { user, loading: authLoading } = useAuth()
   const supabase = useMemo(() => createClient(), [])
+  const anonDb = useMemo(() => createAnonClient(), [])
   const [following, setFollowing] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -28,7 +30,7 @@ export default function FollowingPage() {
       if (!cancelled) setLoading(false)
     }, 8000)
 
-    supabase
+    anonDb
       .from('follows')
       .select('*, profiles!follows_following_id_fkey(id, display_name, handle, avatar_url)')
       .eq('follower_id', user.id)
@@ -49,7 +51,7 @@ export default function FollowingPage() {
       cancelled = true
       clearTimeout(timeout)
     }
-  }, [user, authLoading, supabase])
+  }, [user, authLoading, anonDb])
 
   async function unfollow(targetId: string, name: string) {
     if (!confirm(`Unfollow ${name}?`)) return
