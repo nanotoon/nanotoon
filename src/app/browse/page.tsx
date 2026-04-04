@@ -4,11 +4,13 @@ import { useSearchParams } from 'next/navigation'
 import { SeriesCard } from '@/components/SeriesCard'
 import { useToast } from '@/components/Toast'
 import { createClient } from '@/lib/supabase/client'
+import { useAuth } from '@/contexts/AuthContext'
 import Link from 'next/link'
 
 // --- 1. Everything stays exactly the same in this component ---
 function BrowseContent() {
   const { show } = useToast()
+  const { loading: authLoading } = useAuth()
   const supabase = useMemo(() => createClient(), [])
   const searchParams = useSearchParams()
   const mode = searchParams.get('mode') || 'mostviewed'
@@ -17,6 +19,7 @@ function BrowseContent() {
   const [limit, setLimit] = useState(45)
 
   useEffect(() => {
+    if (authLoading) return
     let cancelled = false
     const timeout = setTimeout(() => { if (!cancelled) setLoading(false) }, 8000)
     async function load() {
@@ -31,7 +34,7 @@ function BrowseContent() {
     }
     load()
     return () => { cancelled = true; clearTimeout(timeout) }
-  }, [mode, limit, supabase])
+  }, [authLoading, mode, limit, supabase])
 
   return (
     <div className="px-4 md:px-8 py-6">

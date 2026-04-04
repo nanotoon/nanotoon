@@ -13,7 +13,7 @@ function timeAgo(d: string) { const m=Math.floor((Date.now()-new Date(d).getTime
 
 export default function GalleryDetailPage() {
   const { id } = useParams() as { id: string }
-  const { show } = useToast(); const { user } = useAuth()
+  const { show } = useToast(); const { user, loading: authLoading } = useAuth()
   const supabase = useMemo(() => createClient(), [])
   const [item, setItem] = useState<any>(null); const [loading, setLoading] = useState(true)
   const [page, setPage] = useState(0); const [liked, setLiked] = useState(false)
@@ -21,6 +21,7 @@ export default function GalleryDetailPage() {
   const [comments, setComments] = useState<any[]>([]); const [cText, setCText] = useState('')
 
   useEffect(() => {
+    if (authLoading) return
     let c = false
     async function load() {
       const { data } = await supabase.from('gallery').select('*, profiles!gallery_author_id_fkey(display_name, handle, avatar_url)').eq('id', id).single()
@@ -34,7 +35,7 @@ export default function GalleryDetailPage() {
       if (!c) setLoading(false)
     }
     load(); return () => { c = true }
-  }, [id, user, supabase])
+  }, [authLoading, id, user, supabase])
 
   async function toggleLike() {
     if (!user||!item){show('Sign in!');return}

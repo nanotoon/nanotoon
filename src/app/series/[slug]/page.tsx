@@ -21,7 +21,7 @@ function timeAgo(d: string) {
 export default function ReaderPage() {
   const params = useParams()
   const { show } = useToast()
-  const { user, profile } = useAuth()
+  const { user, profile, loading: authLoading } = useAuth()
   const slug = params.slug as string
   const supabase = useMemo(() => createClient(), [])
   const viewIncremented = useRef(false)
@@ -49,6 +49,7 @@ export default function ReaderPage() {
   const [replyText, setReplyText] = useState('')
 
   useEffect(() => {
+    if (authLoading) return
     let c = false
     const timeout = setTimeout(() => { if (!c) setLoading(false) }, 10000)
     async function load() {
@@ -81,7 +82,7 @@ export default function ReaderPage() {
     }
     load()
     return () => { c = true }
-  }, [slug, user, supabase])
+  }, [authLoading, slug, user, supabase])
 
   useEffect(() => {
     if (!series || !chapters.length) return

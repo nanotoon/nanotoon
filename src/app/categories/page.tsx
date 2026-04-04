@@ -4,9 +4,11 @@ import { SeriesCard } from '@/components/SeriesCard'
 import { categories } from '@/data/mock'
 import { useToast } from '@/components/Toast'
 import { createClient } from '@/lib/supabase/client'
+import { useAuth } from '@/contexts/AuthContext'
 
 export default function CategoriesPage() {
   const { show } = useToast()
+  const { loading: authLoading } = useAuth()
   const supabase = useMemo(() => createClient(), [])
   const [selectedCat, setSelectedCat] = useState<string | null>(null)
   const [series, setSeries] = useState<any[]>([])
@@ -23,6 +25,7 @@ export default function CategoriesPage() {
   }, [])
 
   useEffect(() => {
+    if (authLoading) return
     let cancelled = false
     async function load() {
       try {
@@ -36,7 +39,7 @@ export default function CategoriesPage() {
     }
     load()
     return () => { cancelled = true }
-  }, [selectedCat, limit, supabase])
+  }, [authLoading, selectedCat, limit, supabase])
 
   function handleCatClick(catName: string) {
     if (selectedCat === catName) {
