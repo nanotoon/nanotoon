@@ -14,9 +14,14 @@ export default function FollowersPage() {
   useEffect(() => {
     if (!user) { setLoading(false); return }
     let c = false
-    supabase.from('follows').select('*, profiles!follows_follower_id_fkey(id, display_name, handle, avatar_url)')
-      .eq('following_id', user.id).order('created_at', { ascending: false })
-      .then(({ data }: any) => { if (!c) { setFollowers(data ?? []); setLoading(false) } })
+    async function load() {
+      try {
+        const { data } = await supabase.from('follows').select('*, profiles!follows_follower_id_fkey(id, display_name, handle, avatar_url)')
+          .eq('following_id', user.id).order('created_at', { ascending: false }) as { data: any[] | null }
+        if (!c) { setFollowers(data ?? []); setLoading(false) }
+      } catch { if (!c) setLoading(false) }
+    }
+    load()
     return () => { c = true }
   }, [user, supabase])
 

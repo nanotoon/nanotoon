@@ -26,13 +26,16 @@ export default function NotificationsPage() {
     if (!user) { setLoading(false); return }
     let cancelled = false
     const timeout = setTimeout(() => { if (!cancelled) setLoading(false) }, 8000)
-    anonDb.from('notifications')
-      .select('*, actor:profiles!notifications_actor_id_fkey(display_name, handle, avatar_url)')
-      .eq('user_id', user.id).order('created_at', { ascending: false }).limit(50)
-      .then(({ data }: any) => {
+    async function load() {
+      try {
+        const { data } = await anonDb.from('notifications')
+          .select('*, actor:profiles!notifications_actor_id_fkey(display_name, handle, avatar_url)')
+          .eq('user_id', user.id).order('created_at', { ascending: false }).limit(50) as { data: any[] | null }
         clearTimeout(timeout)
         if (!cancelled) { setNotifs(data ?? []); setLoading(false) }
-      }).catch(() => { clearTimeout(timeout); if (!cancelled) setLoading(false) })
+      } catch { clearTimeout(timeout); if (!cancelled) setLoading(false) }
+    }
+    load()
     return () => { cancelled = true; clearTimeout(timeout) }
   }, [user, authLoading, supabase])
 

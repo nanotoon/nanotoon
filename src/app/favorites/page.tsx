@@ -26,22 +26,24 @@ export default function FavoritesPage() {
       if (!cancelled) setLoading(false)
     }, 8000)
 
-    supabase
-      .from('favorites')
-      .select('*, series(*, profiles!series_author_id_fkey(display_name, handle, avatar_url))')
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: false })
-      .then(({ data }: any) => {
+    async function load() {
+      try {
+        const { data } = await supabase
+          .from('favorites')
+          .select('*, series(*, profiles!series_author_id_fkey(display_name, handle, avatar_url))')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false }) as { data: any[] | null }
         clearTimeout(timeout)
         if (!cancelled) {
           setFavorites(data ?? [])
           setLoading(false)
         }
-      })
-      .catch(() => {
+      } catch {
         clearTimeout(timeout)
         if (!cancelled) setLoading(false)
-      })
+      }
+    }
+    load()
 
     return () => {
       cancelled = true

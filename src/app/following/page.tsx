@@ -30,22 +30,24 @@ export default function FollowingPage() {
       if (!cancelled) setLoading(false)
     }, 8000)
 
-    anonDb
-      .from('follows')
-      .select('*, profiles!follows_following_id_fkey(id, display_name, handle, avatar_url)')
-      .eq('follower_id', user.id)
-      .order('created_at', { ascending: false })
-      .then(({ data }: any) => {
+    async function load() {
+      try {
+        const { data } = await anonDb
+          .from('follows')
+          .select('*, profiles!follows_following_id_fkey(id, display_name, handle, avatar_url)')
+          .eq('follower_id', user.id)
+          .order('created_at', { ascending: false }) as { data: any[] | null }
         clearTimeout(timeout)
         if (!cancelled) {
           setFollowing(data ?? [])
           setLoading(false)
         }
-      })
-      .catch(() => {
+      } catch {
         clearTimeout(timeout)
         if (!cancelled) setLoading(false)
-      })
+      }
+    }
+    load()
 
     return () => {
       cancelled = true
