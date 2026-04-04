@@ -29,12 +29,20 @@ export async function middleware(request: NextRequest) {
       },
     });
 
-    // KEY FIX: Use getSession() instead of getUser()
-    // getUser() makes an HTTP call to Supabase auth server on EVERY request
-    // On Cloudflare Workers this can timeout/hang, breaking session refresh
-    // getSession() reads from cookies locally — fast and reliable
-    const { data: { session } } = await supabase.auth.getSession();
-    const user = session?.user ?? null;
+    // Use getUser() for proper token refresh, but with a 3-second timeout
+    // so it NEVER hangs on Cloudflare
+    let user = null;
+    try {
+      const result = await Promise.race([
+        supabase.auth.getUser(),
+        new Promise<{ data: { user: null } }>((resolve) =>
+          setTimeout(() => resolve({ data: { user: null } }), 3000)
+        ),
+      ]);
+      user = result.data.user;
+    } catch {
+      user = null;
+    }
 
     const protectedPaths = ["/profile", "/settings", "/favorites", "/followers", "/following", "/notifications"];
     const isProtected = protectedPaths.some((p) => request.nextUrl.pathname.startsWith(p));

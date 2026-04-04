@@ -21,6 +21,10 @@ export default function HomePage() {
 
   useEffect(() => {
     let cancelled = false
+    // Safety timeout — never let homepage loading hang
+    const safetyTimeout = setTimeout(() => {
+      if (!cancelled) { setLoading(false); console.warn('Homepage safety timeout fired') }
+    }, 12000)
     async function load() {
       try {
         setLoading(true)
@@ -32,10 +36,10 @@ export default function HomePage() {
         if (mv.error) console.error('Most viewed query error:', mv.error.message)
         if (lt.error) console.error('Latest query error:', lt.error.message)
         if (!cancelled) { setMostViewed(mv.data ?? []); setLatest(lt.data ?? []) }
-      } catch (err: any) { console.error('Home page load error:', err) } finally { if (!cancelled) setLoading(false) }
+      } catch (err: any) { console.error('Home page load error:', err) } finally { clearTimeout(safetyTimeout); if (!cancelled) setLoading(false) }
     }
     load()
-    return () => { cancelled = true }
+    return () => { cancelled = true; clearTimeout(safetyTimeout) }
   }, [formatFilter, latestLimit, supabase])
 
   const timePills = ['Today', 'Week', 'Month', 'Year', 'All Time']
