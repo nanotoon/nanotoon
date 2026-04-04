@@ -84,7 +84,7 @@ export default function ReaderPage() {
     }
     load()
     return () => { c = true }
-  }, [slug, user, supabase])
+  }, [slug, user, anonDb, supabase])
 
   useEffect(() => {
     if (!series || !chapters.length) return

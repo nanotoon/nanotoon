@@ -26,19 +26,27 @@ export default function GalleryDetailPage() {
 
   useEffect(() => {
     let c = false
+    // Safety timeout — never spin forever
+    const timeout = setTimeout(() => { if (!c) setLoading(false) }, 10000)
     async function load() {
-      const { data } = await anonDb.from('gallery').select('*, profiles!gallery_author_id_fkey(display_name, handle, avatar_url)').eq('id', id).single() as { data: any }
-      if (!c && data) {
-        setItem(data)
-        await supabase.from('gallery').update({ total_views: ((data as any).total_views??0)+1 }).eq('id', id)
-        const { data: cmts } = await anonDb.from('gallery_comments').select('*, profiles!gallery_comments_user_id_fkey(display_name, handle, avatar_url)').eq('gallery_id', id).order('created_at', { ascending: false }) as { data: any[] | null }
-        if (!c) setComments(cmts ?? [])
-        if (user) { const { data: lk } = await supabase.from('gallery_likes').select('*').eq('user_id', user.id).eq('gallery_id', id).maybeSingle(); if (!c) setLiked(!!lk) }
-      }
+      try {
+        const { data } = await anonDb.from('gallery').select('*, profiles!gallery_author_id_fkey(display_name, handle, avatar_url)').eq('id', id).single() as { data: any }
+        if (!c && data) {
+          setItem(data)
+          // Write: use auth client for update (correct)
+          await supabase.from('gallery').update({ total_views: ((data as any).total_views??0)+1 }).eq('id', id)
+          // Read: use anonDb for comments (public read — never auth client)
+          const { data: cmts } = await anonDb.from('gallery_comments').select('*, profiles!gallery_comments_user_id_fkey(display_name, handle, avatar_url)').eq('gallery_id', id).order('created_at', { ascending: false }) as { data: any[] | null }
+          if (!c) setComments(cmts ?? [])
+          // Read: use anonDb for likes check (public read — auth client would hang on JWT refresh)
+          if (user) { const { data: lk } = await anonDb.from('gallery_likes').select('id').eq('user_id', user.id).eq('gallery_id', id).maybeSingle() as { data: any }; if (!c) setLiked(!!lk) }
+        }
+      } catch { /* swallow — timeout will clear loading */ }
+      clearTimeout(timeout)
       if (!c) setLoading(false)
     }
-    load(); return () => { c = true }
-  }, [id, user, supabase])
+    load(); return () => { c = true; clearTimeout(timeout) }
+  }, [id, user, anonDb, supabase])
 
   async function toggleLike() {
     if (!user||!item){show('Sign in!');return}
