@@ -30,18 +30,55 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (initDone.current) return;
     initDone.current = true;
 
-    // HARD CEILING: loading can NEVER stay true longer than 4 seconds
+    // Safety ceiling: loading never stays true forever
     const hardTimeout = setTimeout(() => {
       console.warn("Auth hard timeout — forcing loading=false");
       setLoading(false);
-    }, 4000);
+    }, 8000);
 
     const init = async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-        const u = session?.user ?? null;
-        setUser(u);
-        if (u) await fetchProfile(u.id);
+        // Get the current session from cookies
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+        if (sessionError) {
+          console.warn("getSession error:", sessionError.message);
+          setUser(null);
+          setProfile(null);
+          return;
+        }
+
+        if (!session) {
+          setUser(null);
+          setProfile(null);
+          return;
+        }
+
+        // Check if token is expired or about to expire
+        const exp = session.expires_at ?? 0;
+        const now = Math.floor(Date.now() / 1000);
+
+        if (now >= exp - 60) {
+          // Token expired or expiring within 60 seconds — refresh it
+          console.log("Session token expired, refreshing...");
+          const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+
+          if (refreshError || !refreshData.session) {
+            console.warn("Session refresh failed:", refreshError?.message);
+            // Clear broken session so queries go through as anon
+            await supabase.auth.signOut();
+            setUser(null);
+            setProfile(null);
+            return;
+          }
+
+          setUser(refreshData.session.user);
+          await fetchProfile(refreshData.session.user.id);
+        } else {
+          // Token is valid
+          setUser(session.user);
+          await fetchProfile(session.user.id);
+        }
       } catch (err) {
         console.warn("Auth init failed:", err);
         setUser(null);

@@ -12,10 +12,17 @@ export function createClient() {
       {
         global: {
           fetch: (url: any, options: any = {}) => {
-            // CRITICAL: 10-second timeout on ALL supabase requests.
-            // Prevents token refresh and queries from hanging forever on Cloudflare.
+            const urlStr = typeof url === 'string' ? url : url?.toString?.() || '';
+
+            // NEVER timeout auth requests — token refresh MUST complete
+            // or the session breaks and all queries fail
+            if (urlStr.includes('/auth/')) {
+              return fetch(url, options);
+            }
+
+            // Data queries get a 15-second timeout to prevent infinite loading
             const controller = new AbortController();
-            const timeout = setTimeout(() => controller.abort(), 10000);
+            const timeout = setTimeout(() => controller.abort(), 15000);
             return fetch(url, { ...options, signal: controller.signal })
               .finally(() => clearTimeout(timeout));
           },

@@ -29,20 +29,11 @@ export async function middleware(request: NextRequest) {
       },
     });
 
-    // Use getUser() for proper token refresh, but with a 3-second timeout
-    // so it NEVER hangs on Cloudflare
-    let user = null;
-    try {
-      const result = await Promise.race([
-        supabase.auth.getUser(),
-        new Promise<{ data: { user: null } }>((resolve) =>
-          setTimeout(() => resolve({ data: { user: null } }), 3000)
-        ),
-      ]);
-      user = result.data.user;
-    } catch {
-      user = null;
-    }
+    // getUser() validates + refreshes the token and updates cookies
+    // This is what Supabase officially recommends
+    // It MUST complete (no timeout) — if we abort this, the token stays expired
+    // and all client-side queries fail
+    const { data: { user } } = await supabase.auth.getUser();
 
     const protectedPaths = ["/profile", "/settings", "/favorites", "/followers", "/following", "/notifications"];
     const isProtected = protectedPaths.some((p) => request.nextUrl.pathname.startsWith(p));
@@ -60,8 +51,9 @@ export async function middleware(request: NextRequest) {
     }
 
   } catch (error) {
-    console.error("Middleware Error:", error);
-    return supabaseResponse;
+    // If getUser fails, just let the request through
+    // Client-side code handles auth state independently
+    console.error("Middleware auth error (continuing):", error);
   }
 
   return supabaseResponse;
