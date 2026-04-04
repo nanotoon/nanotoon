@@ -4,21 +4,18 @@ import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { SeriesCard } from '@/components/SeriesCard'
 import { categories } from '@/data/mock'
-import { createClient } from '@/lib/supabase/client'
-import { useAuth } from '@/contexts/AuthContext'
+import { createAnonClient } from '@/lib/supabase/anon'
 
 function SearchContent() {
   const searchParams = useSearchParams()
   const query = searchParams.get('q') || ''
-  const { loading: authLoading } = useAuth()
-  const supabase = useMemo(() => createClient(), [])
+  const supabase = useMemo(() => createAnonClient(), [])
   const [genreFilter, setGenreFilter] = useState('All')
   const [formatFilter, setFormatFilter] = useState('All')
   const [results, setResults] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    if (authLoading) return
     if (!query.trim()) { setResults([]); setLoading(false); return }
     let cancelled = false
     const timeout = setTimeout(() => { if (!cancelled) setLoading(false) }, 8000)
@@ -65,7 +62,7 @@ function SearchContent() {
     }
     search()
     return () => { cancelled = true; clearTimeout(timeout) }
-  }, [authLoading, query, genreFilter, formatFilter, supabase])
+  }, [query, genreFilter, formatFilter, supabase])
 
   const PillGroup = ({ label, options, value, onChange }: any) => (
     <div className="flex items-center gap-1 flex-wrap">

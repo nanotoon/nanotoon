@@ -7,35 +7,36 @@ import { ShareModal } from '@/components/ShareModal'
 import { useToast } from '@/components/Toast'
 import { useAuth } from '@/contexts/AuthContext'
 import { createClient } from '@/lib/supabase/client'
+import { createAnonClient } from '@/lib/supabase/anon'
 
 function fmtNum(n: number|null|undefined): string { if (!n) return '0'; if (n>=1e6) return (n/1e6).toFixed(1).replace(/\.0$/,'')+'M'; if (n>=1e3) return (n/1e3).toFixed(1).replace(/\.0$/,'')+'K'; return n.toString() }
 function timeAgo(d: string) { const m=Math.floor((Date.now()-new Date(d).getTime())/60000); if(m<1)return'just now';if(m<60)return m+'m ago';const h=Math.floor(m/60);if(h<24)return h+'h ago';return Math.floor(h/24)+'d ago' }
 
 export default function GalleryDetailPage() {
   const { id } = useParams() as { id: string }
-  const { show } = useToast(); const { user, loading: authLoading } = useAuth()
+  const { show } = useToast(); const { user } = useAuth()
   const supabase = useMemo(() => createClient(), [])
+  const anonDb = useMemo(() => createAnonClient(), [])
   const [item, setItem] = useState<any>(null); const [loading, setLoading] = useState(true)
   const [page, setPage] = useState(0); const [liked, setLiked] = useState(false)
   const [showShare, setShowShare] = useState<any>(null)
   const [comments, setComments] = useState<any[]>([]); const [cText, setCText] = useState('')
 
   useEffect(() => {
-    if (authLoading) return
     let c = false
     async function load() {
-      const { data } = await supabase.from('gallery').select('*, profiles!gallery_author_id_fkey(display_name, handle, avatar_url)').eq('id', id).single()
+      const { data } = await anonDb.from('gallery').select('*, profiles!gallery_author_id_fkey(display_name, handle, avatar_url)').eq('id', id).single()
       if (!c && data) {
         setItem(data)
         await supabase.from('gallery').update({ total_views: (data.total_views??0)+1 }).eq('id', id)
-        const { data: cmts } = await supabase.from('gallery_comments').select('*, profiles!gallery_comments_user_id_fkey(display_name, handle, avatar_url)').eq('gallery_id', id).order('created_at', { ascending: false })
+        const { data: cmts } = await anonDb.from('gallery_comments').select('*, profiles!gallery_comments_user_id_fkey(display_name, handle, avatar_url)').eq('gallery_id', id).order('created_at', { ascending: false })
         if (!c) setComments(cmts ?? [])
         if (user) { const { data: lk } = await supabase.from('gallery_likes').select('*').eq('user_id', user.id).eq('gallery_id', id).maybeSingle(); if (!c) setLiked(!!lk) }
       }
       if (!c) setLoading(false)
     }
     load(); return () => { c = true }
-  }, [authLoading, id, user, supabase])
+  }, [id, user, supabase])
 
   async function toggleLike() {
     if (!user||!item){show('Sign in!');return}

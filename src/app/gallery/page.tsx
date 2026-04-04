@@ -2,13 +2,11 @@
 import { useState, useEffect, useMemo } from 'react'
 import { GalleryCard } from '@/components/GalleryCard'
 import { useToast } from '@/components/Toast'
-import { createClient } from '@/lib/supabase/client'
-import { useAuth } from '@/contexts/AuthContext'
+import { createAnonClient } from '@/lib/supabase/anon'
 
 export default function GalleryPage() {
   const { show } = useToast()
-  const { loading: authLoading } = useAuth()
-  const supabase = useMemo(() => createClient(), [])
+  const supabase = useMemo(() => createAnonClient(), [])
   const [items, setItems] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -16,7 +14,6 @@ export default function GalleryPage() {
   const [retryKey, setRetryKey] = useState(0)
 
   useEffect(() => {
-    if (authLoading) return
     let cancelled = false
     // Safety timeout — if query hangs, stop loading after 12s
     const timeout = setTimeout(() => {
@@ -70,7 +67,7 @@ export default function GalleryPage() {
     }
     load()
     return () => { cancelled = true; clearTimeout(timeout) }
-  }, [authLoading, supabase, limit, retryKey])
+  }, [supabase, limit, retryKey])
 
   return (
     <div className="px-4 md:px-8 py-6">

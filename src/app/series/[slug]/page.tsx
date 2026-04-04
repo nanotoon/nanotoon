@@ -9,6 +9,7 @@ import { ReportModal } from '@/components/ReportModal'
 import { useToast } from '@/components/Toast'
 import { useAuth } from '@/contexts/AuthContext'
 import { createClient } from '@/lib/supabase/client'
+import { createAnonClient } from '@/lib/supabase/anon'
 
 function fmtNum(n: number | null | undefined): string {
   if (!n) return '0'; if (n >= 1e6) return (n/1e6).toFixed(1).replace(/\.0$/,'')+'M'; if (n >= 1e3) return (n/1e3).toFixed(1).replace(/\.0$/,'')+'K'; return n.toString()
@@ -21,9 +22,10 @@ function timeAgo(d: string) {
 export default function ReaderPage() {
   const params = useParams()
   const { show } = useToast()
-  const { user, profile, loading: authLoading } = useAuth()
+  const { user, profile } = useAuth()
   const slug = params.slug as string
   const supabase = useMemo(() => createClient(), [])
+  const anonDb = useMemo(() => createAnonClient(), [])
   const viewIncremented = useRef(false)
 
   const [series, setSeries] = useState<any>(null)
@@ -49,19 +51,18 @@ export default function ReaderPage() {
   const [replyText, setReplyText] = useState('')
 
   useEffect(() => {
-    if (authLoading) return
     let c = false
     const timeout = setTimeout(() => { if (!c) setLoading(false) }, 10000)
     async function load() {
       try {
-        const { data: s } = await supabase.from('series').select('*, profiles!series_author_id_fkey(display_name, handle, avatar_url)').eq('slug', slug).single()
+        const { data: s } = await anonDb.from('series').select('*, profiles!series_author_id_fkey(display_name, handle, avatar_url)').eq('slug', slug).single()
         if (!s || c) { setLoading(false); return }
         setSeries(s)
-        const { data: chs } = await supabase.from('chapters').select('*').eq('series_id', s.id).order('chapter_number', { ascending: true })
+        const { data: chs } = await anonDb.from('chapters').select('*').eq('series_id', s.id).order('chapter_number', { ascending: true })
         if (c) return
         setChapters(chs ?? [])
         if (chs?.length) { setCurrentCh(chs[chs.length - 1].chapter_number); setChapterViews(chs[chs.length - 1].views ?? 0) }
-        const { data: sc } = await supabase.from('comments').select('*, profiles!comments_user_id_fkey(display_name, handle, avatar_url)').eq('series_id', s.id).is('chapter_id', null).order('created_at', { ascending: false })
+        const { data: sc } = await anonDb.from('comments').select('*, profiles!comments_user_id_fkey(display_name, handle, avatar_url)').eq('series_id', s.id).is('chapter_id', null).order('created_at', { ascending: false })
         if (!c) setSeriesComments(sc ?? [])
         if (user) {
           const [lk, fv, fw] = await Promise.all([
@@ -82,14 +83,14 @@ export default function ReaderPage() {
     }
     load()
     return () => { c = true }
-  }, [authLoading, slug, user, supabase])
+  }, [slug, user, supabase])
 
   useEffect(() => {
     if (!series || !chapters.length) return
     const ch = chapters.find(c => c.chapter_number === currentCh)
     if (!ch) return
     setChapterViews(ch.views ?? 0)
-    supabase.from('comments').select('*, profiles!comments_user_id_fkey(display_name, handle, avatar_url)').eq('chapter_id', ch.id).order('created_at', { ascending: false })
+    anonDb.from('comments').select('*, profiles!comments_user_id_fkey(display_name, handle, avatar_url)').eq('chapter_id', ch.id).order('created_at', { ascending: false })
       .then(({ data }: any) => setComments(data ?? []))
     supabase.from('chapters').update({ views: (ch.views ?? 0) + 1 }).eq('id', ch.id).then(() => {
       setChapterViews(v => v + 1)

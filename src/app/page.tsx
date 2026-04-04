@@ -3,13 +3,11 @@ import { useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
 import { SeriesCard } from '@/components/SeriesCard'
 import { useToast } from '@/components/Toast'
-import { createClient } from '@/lib/supabase/client'
-import { useAuth } from '@/contexts/AuthContext'
+import { createAnonClient } from '@/lib/supabase/anon'
 
 export default function HomePage() {
   const { show } = useToast()
-  const { loading: authLoading } = useAuth()
-  const supabase = useMemo(() => createClient(), [])
+  const supabase = useMemo(() => createAnonClient(), [])
   const [isMobile, setIsMobile] = useState(false)
   const [mounted, setMounted] = useState(false)
   const [formatFilter, setFormatFilter] = useState('All')
@@ -22,7 +20,6 @@ export default function HomePage() {
   useEffect(() => { function c() { setIsMobile(window.innerWidth < 768) }; c(); setMounted(true); window.addEventListener('resize', c); return () => window.removeEventListener('resize', c) }, [])
 
   useEffect(() => {
-    if (authLoading) return
     let cancelled = false
     // Safety timeout — never let homepage loading hang
     const safetyTimeout = setTimeout(() => {
@@ -43,7 +40,7 @@ export default function HomePage() {
     }
     load()
     return () => { cancelled = true; clearTimeout(safetyTimeout) }
-  }, [authLoading, formatFilter, latestLimit, supabase])
+  }, [formatFilter, latestLimit, supabase])
 
   const timePills = ['Today', 'Week', 'Month', 'Year', 'All Time']
   if (!mounted) return <div className="min-h-screen" />
