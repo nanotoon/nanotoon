@@ -10,22 +10,14 @@ export function createClient() {
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
       {
-        global: {
-          fetch: (url: any, options: any = {}) => {
-            const urlStr = typeof url === 'string' ? url : url?.toString?.() || '';
-
-            // NEVER timeout auth requests — token refresh MUST complete
-            // or the session breaks and all queries fail
-            if (urlStr.includes('/auth/')) {
-              return fetch(url, options);
-            }
-
-            // Data queries get a 15-second timeout to prevent infinite loading
-            const controller = new AbortController();
-            const timeout = setTimeout(() => controller.abort(), 15000);
-            return fetch(url, { ...options, signal: controller.signal })
-              .finally(() => clearTimeout(timeout));
-          },
+        auth: {
+          // CRITICAL FIX: Disable auto-refresh.
+          // When auto-refresh hangs (common on Cloudflare), it blocks
+          // ALL queries behind it, causing infinite loading.
+          // We handle refresh manually in AuthContext instead.
+          autoRefreshToken: false,
+          persistSession: true,
+          detectSessionInUrl: true,
         },
       }
     );

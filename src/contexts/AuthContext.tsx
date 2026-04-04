@@ -13,6 +13,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const supabase = useMemo(() => createClient(), []);
   const initDone = useRef(false);
+  const refreshTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchProfile = useCallback(async (uid: string) => {
     try {
@@ -26,89 +27,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const refreshProfile = useCallback(async () => { if (user) await fetchProfile(user.id); }, [user, fetchProfile]);
 
-  useEffect(() => {
-    if (initDone.current) return;
-    initDone.current = true;
-
-    // Safety ceiling: loading never stays true forever
-    const hardTimeout = setTimeout(() => {
-      console.warn("Auth hard timeout — forcing loading=false");
-      setLoading(false);
-    }, 8000);
-
-    const init = async () => {
-      try {
-        // Get the current session from cookies
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-
-        if (sessionError) {
-          console.warn("getSession error:", sessionError.message);
-          setUser(null);
-          setProfile(null);
-          return;
-        }
-
-        if (!session) {
-          setUser(null);
-          setProfile(null);
-          return;
-        }
-
-        // Check if token is expired or about to expire
-        const exp = session.expires_at ?? 0;
-        const now = Math.floor(Date.now() / 1000);
-
-        if (now >= exp - 60) {
-          // Token expired or expiring within 60 seconds — refresh it
-          console.log("Session token expired, refreshing...");
-          const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
-
-          if (refreshError || !refreshData.session) {
-            console.warn("Session refresh failed:", refreshError?.message);
-            // Clear broken session so queries go through as anon
-            await supabase.auth.signOut();
-            setUser(null);
-            setProfile(null);
-            return;
-          }
-
-          setUser(refreshData.session.user);
-          await fetchProfile(refreshData.session.user.id);
-        } else {
-          // Token is valid
-          setUser(session.user);
-          await fetchProfile(session.user.id);
-        }
-      } catch (err) {
-        console.warn("Auth init failed:", err);
-        setUser(null);
-        setProfile(null);
-      } finally {
-        clearTimeout(hardTimeout);
-        setLoading(false);
+  // Manual token refresh with strict timeout
+  const tryRefreshSession = useCallback(async (): Promise<boolean> => {
+    try {
+      const result = await Promise.race([
+        supabase.auth.refreshSession(),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("Token refresh timed out")), 5000)
+        ),
+      ]);
+      if (result.error || !result.data.session) {
+        console.warn("Token refresh failed:", result.error?.message);
+        return false;
       }
-    };
+      setUser(result.data.session.user);
+      return true;
+    } catch (err: any) {
+      console.warn("Token refresh error:", err?.message);
+      return false;
+    }
+  }, [supabase]);
 
-    init();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_e: any, session: any) => {
-      const u = session?.user ?? null;
-      setUser(u);
-      if (u) {
-        try { await fetchProfile(u.id); } catch {}
-      } else {
-        setProfile(null);
-      }
-      setLoading(false);
-    });
-
-    return () => { clearTimeout(hardTimeout); subscription.unsubscribe(); };
-  }, [supabase, fetchProfile]);
-
-  const signOut = useCallback(async () => {
+  const doSignOut = useCallback(async () => {
     setUser(null);
     setProfile(null);
     setLoading(false);
+    if (refreshTimer.current) clearInterval(refreshTimer.current);
     try { await supabase.auth.signOut(); } catch {}
     try {
       for (let i = localStorage.length - 1; i >= 0; i--) {
@@ -129,6 +73,82 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     window.location.replace('/');
   }, [supabase]);
 
-  return <AuthContext.Provider value={{ user, profile, loading, signOut, refreshProfile }}>{children}</AuthContext.Provider>;
+  useEffect(() => {
+    if (initDone.current) return;
+    initDone.current = true;
+
+    const init = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+
+        if (!session) {
+          // Not logged in — done
+          setLoading(false);
+          return;
+        }
+
+        // Check if token needs refresh
+        const exp = session.expires_at ?? 0;
+        const now = Math.floor(Date.now() / 1000);
+
+        if (now >= exp - 60) {
+          // Token expired or expiring — try refresh with timeout
+          console.log("Token expired, refreshing...");
+          const success = await tryRefreshSession();
+          if (success) {
+            // Refresh worked — fetch profile
+            const { data: { session: newSession } } = await supabase.auth.getSession();
+            if (newSession) await fetchProfile(newSession.user.id);
+          } else {
+            // Refresh failed — sign out to clear broken session
+            // This lets queries go through as anon (which works)
+            console.warn("Refresh failed — clearing session");
+            try { await supabase.auth.signOut(); } catch {}
+            setUser(null);
+            setProfile(null);
+          }
+        } else {
+          // Token is fresh — use it
+          setUser(session.user);
+          await fetchProfile(session.user.id);
+
+          // Set up periodic refresh (every 45 minutes)
+          refreshTimer.current = setInterval(async () => {
+            const success = await tryRefreshSession();
+            if (!success) {
+              console.warn("Periodic refresh failed");
+              if (refreshTimer.current) clearInterval(refreshTimer.current);
+            }
+          }, 45 * 60 * 1000);
+        }
+      } catch (err) {
+        console.warn("Auth init failed:", err);
+        setUser(null);
+        setProfile(null);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    init();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_e: any, session: any) => {
+      const u = session?.user ?? null;
+      setUser(u);
+      if (u) {
+        try { await fetchProfile(u.id); } catch {}
+      } else {
+        setProfile(null);
+      }
+      setLoading(false);
+    });
+
+    return () => {
+      subscription.unsubscribe();
+      if (refreshTimer.current) clearInterval(refreshTimer.current);
+    };
+  }, [supabase, fetchProfile, tryRefreshSession]);
+
+  return <AuthContext.Provider value={{ user, profile, loading, signOut: doSignOut, refreshProfile }}>{children}</AuthContext.Provider>;
 }
 export function useAuth() { return useContext(AuthContext); }
