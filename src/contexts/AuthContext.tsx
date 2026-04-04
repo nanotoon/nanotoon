@@ -65,7 +65,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     init();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event: string, session: any) => {
       // INITIAL_SESSION is already handled by init() — skip it to avoid the race condition
       // where both paths call setLoading(false) at different times
       if (event === 'INITIAL_SESSION') return;
