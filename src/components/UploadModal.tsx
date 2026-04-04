@@ -3,6 +3,7 @@ import { useState, useRef, useEffect, useMemo } from 'react'
 import { GENRES_ALL } from '@/data/mock'
 import { useAuth } from '@/contexts/AuthContext'
 import { createClient } from '@/lib/supabase/client'
+import { createAnonClient } from '@/lib/supabase/anon'
 
 const MAX_FILE = 10 * 1024 * 1024
 const MAX_TOTAL_SERIES = 150 * 1024 * 1024
@@ -59,6 +60,7 @@ function MatureTip({ mobile }: { mobile: boolean }) {
 export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast: (m: string) => void }) {
   const { user } = useAuth()
   const supabase = useMemo(() => createClient(), [])
+  const anonDb = useMemo(() => createAnonClient(), [])
   const [step, setStep] = useState<'choose' | 'existing' | 'form'>('choose')
   const [uploadType, setUploadType] = useState<'series' | 'gallery'>('series')
   const [mode, setMode] = useState<'new' | 'existing'>('new')
@@ -94,16 +96,16 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
   useEffect(() => {
     if (!user) return
     setLoadingSeries(true)
-    supabase.from('series').select('*').eq('author_id', user.id).order('created_at', { ascending: false })
+    anonDb.from('series').select('*').eq('author_id', user.id).order('created_at', { ascending: false })
       .then(({ data }: any) => { setMySeries(data ?? []); setLoadingSeries(false) })
-  }, [user, supabase])
+  }, [user, anonDb])
 
   useEffect(() => {
     if (!selectedSeriesId) return
-    supabase.from('chapters').select('chapter_number').eq('series_id', selectedSeriesId)
+    anonDb.from('chapters').select('chapter_number').eq('series_id', selectedSeriesId)
       .order('chapter_number', { ascending: false }).limit(1)
       .then(({ data }: any) => setChapterNumber(data?.length > 0 ? data[0].chapter_number + 1 : 1))
-  }, [selectedSeriesId, supabase])
+  }, [selectedSeriesId, anonDb])
 
   const canPubSeries = mode === 'existing' ? !!(rating && chapterTitle && selectedSeriesId) : !!(format && rating && chapterTitle && seriesTitle)
   const canPubGallery = !!(gTitle.trim() && files.length > 0)
@@ -146,7 +148,7 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
   async function ensureProfile() {
     if (!user) throw new Error('Not logged in')
     try {
-      const { data, error } = await supabase.from('profiles').select('id').eq('id', user.id).maybeSingle()
+      const { data, error } = await anonDb.from('profiles').select('id').eq('id', user.id).maybeSingle() as { data: any; error: any }
       if (error) console.warn('Profile select error (will try insert):', error.message)
       if (data) return
     } catch (err: any) {
@@ -183,11 +185,11 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
       setProgress('Creating series...')
       let thumbnailUrl: string | null = null
       if (thumbFile) {
-        setProgress('Uploading thumbnail...')
-        const ext = thumbFile.name.split('.').pop() || 'jpg'
-        const path = 'thumbnails/' + user!.id + '/' + Date.now() + '.' + ext
+        setProgress('Compressing thumbnail...')
+        const compressed = await compressImage(thumbFile, 800, 0.85)
+        const path = 'thumbnails/' + user!.id + '/' + Date.now() + '.webp'
         try {
-          thumbnailUrl = await uploadToR2(thumbFile, path)
+          thumbnailUrl = await uploadToR2(compressed, path)
         } catch (e: any) {
           onToast('Thumbnail skipped: ' + e.message)
         }
@@ -222,17 +224,18 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
   async function doGalleryUpload() {
     const imageUrls: string[] = []
     for (let i = 0; i < files.length; i++) {
+      setProgress('Compressing image ' + (i + 1) + '/' + files.length + '...')
+      const compressed = await compressImage(files[i], 9999, 0.85)
       setProgress('Uploading image ' + (i + 1) + '/' + files.length + '...')
-      const f = files[i], ext = f.name.split('.').pop() || 'jpg'
-      const path = 'gallery/' + user!.id + '/' + Date.now() + '_' + i + '.' + ext
-      const url = await uploadToR2(f, path)
+      const path = 'gallery/' + user!.id + '/' + Date.now() + '_' + i + '.webp'
+      const url = await uploadToR2(compressed, path)
       imageUrls.push(url)
     }
     let thumbnailUrl: string | null = null
     if (files.length > 1 && thumbFile) {
-      const ext = thumbFile.name.split('.').pop() || 'jpg'
-      const path = 'gallery/' + user!.id + '/thumb_' + Date.now() + '.' + ext
-      try { thumbnailUrl = await uploadToR2(thumbFile, path) } catch { /* skip */ }
+      const compressed = await compressImage(thumbFile, 9999, 0.85)
+      const path = 'gallery/' + user!.id + '/thumb_' + Date.now() + '.webp'
+      try { thumbnailUrl = await uploadToR2(compressed, path) } catch { /* skip */ }
     }
     setProgress('Saving...')
     const { error } = await supabase.from('gallery').insert({
