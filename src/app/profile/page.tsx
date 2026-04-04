@@ -1,4 +1,5 @@
 'use client'
+import { LoadingSpinner } from '@/components/LoadingSpinner'
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { SeriesCard } from '@/components/SeriesCard'
 import { Avatar } from '@/components/Avatar'
@@ -97,7 +98,7 @@ export default function ProfilePage() {
         ))}
       </div>
       <h3 className="font-semibold mb-3 text-sm">My Series</h3>
-      {loading ? <p className="text-[#52525b] text-sm">Loading...</p> : mySeries.length === 0 ? (
+      {loading ? <LoadingSpinner /> : mySeries.length === 0 ? (
         <p className="text-[#71717a] text-sm">No series yet. Upload your first one!</p>
       ) : (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

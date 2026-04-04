@@ -1,4 +1,5 @@
 'use client'
+import { LoadingSpinner } from '@/components/LoadingSpinner'
 import { useState, useEffect, useMemo } from 'react'
 import { SeriesCard } from '@/components/SeriesCard'
 import { createAnonClient } from '@/lib/supabase/anon'
@@ -55,7 +56,7 @@ export default function FavoritesPage() {
     <div className="px-4 md:px-8 py-6">
       <h2 className="text-base font-semibold text-[#c084fc] mb-4">Your Favorites</h2>
       {loading ? (
-        <p className="text-center py-16 text-[#52525b] text-sm">Loading...</p>
+        <LoadingSpinner />
       ) : !user ? (
         <p className="text-center py-16 text-[#71717a]">Sign in to see your favorites.</p>
       ) : favorites.length === 0 ? (

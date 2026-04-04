@@ -1,4 +1,5 @@
 'use client'
+import { LoadingSpinner } from '@/components/LoadingSpinner'
 import { useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
 import { Avatar } from '@/components/Avatar'
@@ -58,7 +59,7 @@ export default function NotificationsPage() {
         <button onClick={markAllRead} className="text-xs text-[#c084fc] bg-transparent border-none cursor-pointer">Mark all read</button>
       </div>
       {loading ? (
-        <p className="text-center py-12 text-[#52525b] text-sm">Loading...</p>
+        <LoadingSpinner />
       ) : !user ? (
         <p className="text-center py-12 text-[#71717a]">Sign in to see notifications.</p>
       ) : notifs.length === 0 ? (

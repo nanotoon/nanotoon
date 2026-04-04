@@ -2,6 +2,7 @@
 import { useState, useEffect, useMemo, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { SeriesCard } from '@/components/SeriesCard'
+import { LoadingSpinner } from '@/components/LoadingSpinner'
 import { useToast } from '@/components/Toast'
 import { createAnonClient } from '@/lib/supabase/anon'
 import Link from 'next/link'
@@ -41,7 +42,7 @@ function BrowseContent() {
         </Link>
         <h1 className="text-xl font-bold text-white">{mode === 'latest' ? 'Latest Updates' : 'Most Viewed'}</h1>
       </div>
-      {loading && series.length === 0 ? <p className="text-center py-12 text-[#52525b] text-sm">Loading...</p> : series.length === 0 ? (
+      {loading && series.length === 0 ? <LoadingSpinner /> : series.length === 0 ? (
         <p className="text-center py-12 text-[#52525b] text-sm">No series yet.</p>
       ) : (
         <div className="grid gap-2.5 md:gap-4 grid-cols-3 md:grid-cols-9">
@@ -62,7 +63,7 @@ function BrowseContent() {
 // --- 2. This wrapper just lets Cloudflare build the page ---
 export default function BrowsePage() {
   return (
-    <Suspense fallback={<p className="text-center py-12 text-[#52525b] text-sm">Loading...</p>}>
+    <Suspense fallback={<LoadingSpinner />}>
       <BrowseContent />
     </Suspense>
   )

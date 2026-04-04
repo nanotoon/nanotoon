@@ -1,4 +1,5 @@
 'use client'
+import { LoadingSpinner } from '@/components/LoadingSpinner'
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
@@ -6,6 +7,7 @@ import { GENRES_ALL, GRADIENTS } from '@/data/mock'
 import { useToast } from '@/components/Toast'
 import { useAuth } from '@/contexts/AuthContext'
 import { createClient } from '@/lib/supabase/client'
+import { createAnonClient } from '@/lib/supabase/anon'
 
 export default function EditSeriesPage() {
   const params = useParams()
@@ -14,6 +16,7 @@ export default function EditSeriesPage() {
   const { user } = useAuth()
   const slug = params.slug as string
   const supabase = createClient()
+  const anonDb = createAnonClient()
   const thumbRef = useRef<HTMLInputElement>(null)
 
   const [series, setSeries] = useState<any>(null)
@@ -45,7 +48,7 @@ export default function EditSeriesPage() {
 
   useEffect(() => {
     async function fetch() {
-      const { data: s } = await supabase.from('series').select('*').eq('slug', slug).single()
+      const { data: s } = await anonDb.from('series').select('*').eq('slug', slug).single() as { data: any }
       if (!s) { setLoading(false); return }
       setSeries(s)
       setTitle(s.title)
@@ -53,7 +56,7 @@ export default function EditSeriesPage() {
       setFormat(s.format)
       setGenres(new Set(s.genres || []))
       setThumbPreview(s.thumbnail_url)
-      const { data: chs } = await supabase.from('chapters').select('*').eq('series_id', s.id).order('chapter_number', { ascending: true })
+      const { data: chs } = await anonDb.from('chapters').select('*').eq('series_id', s.id).order('chapter_number', { ascending: true }) as { data: any[] | null }
       setChapters(chs ?? [])
       if (chs && chs.length > 0) setNewChNumber(chs[chs.length - 1].chapter_number + 1)
       setLoading(false)
@@ -260,7 +263,7 @@ export default function EditSeriesPage() {
     show('Chapter added!')
   }
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center text-[#52525b]">Loading...</div>
+  if (loading) return <div className="min-h-screen"><LoadingSpinner /></div>
   if (!series) return <div className="min-h-screen flex items-center justify-center text-[#71717a]">Series not found</div>
 
   return (

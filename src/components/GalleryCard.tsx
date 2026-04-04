@@ -1,3 +1,5 @@
+'use client'
+import { useState } from 'react'
 import Link from 'next/link'
 import { GRADIENTS } from '@/data/mock'
 
@@ -12,12 +14,21 @@ export function GalleryCard({ item, index }: { item: any; index: number }) {
   const [c1, c2] = GRADIENTS[index % GRADIENTS.length]
   const imgs = item.image_urls || []
   const thumb = item.thumbnail_url || (imgs.length > 0 ? imgs[0] : null)
+  const [isLandscape, setIsLandscape] = useState(false)
 
   return (
-    <Link href={`/gallery/${item.id}`} className="group cursor-pointer block no-underline">
+    <Link href={`/gallery/${item.id}`} className={'group cursor-pointer block no-underline ' + (isLandscape ? 'col-span-2 md:col-span-2' : '')}>
       <div className="relative rounded-xl overflow-hidden bg-[#27272a]">
         {thumb ? (
-          <img src={thumb} alt={item.title} className="w-full aspect-[4/5] object-cover group-hover:-translate-y-1.5 transition-transform duration-300" />
+          <img
+            src={thumb}
+            alt={item.title}
+            onLoad={(e) => {
+              const img = e.currentTarget
+              if (img.naturalWidth > img.naturalHeight * 1.2) setIsLandscape(true)
+            }}
+            className={'w-full object-cover group-hover:-translate-y-1.5 transition-transform duration-300 ' + (isLandscape ? 'aspect-[16/9]' : 'aspect-[4/5]')}
+          />
         ) : (
           <div
             className="w-full aspect-[4/5] flex items-center justify-center text-4xl"

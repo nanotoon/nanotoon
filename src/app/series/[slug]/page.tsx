@@ -1,4 +1,5 @@
 'use client'
+import { LoadingSpinner } from '@/components/LoadingSpinner'
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
@@ -224,7 +225,7 @@ export default function ReaderPage() {
     )
   }
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center text-[#52525b]">Loading...</div>
+  if (loading) return <div className="min-h-screen"><LoadingSpinner /></div>
   if (!series) return <div className="min-h-screen flex items-center justify-center text-[#71717a]">Series not found</div>
 
   const maxCh = chapters.length > 0 ? chapters[chapters.length - 1].chapter_number : 0
@@ -276,6 +277,12 @@ export default function ReaderPage() {
             <button onClick={() => setShowShare({ title: `${series.title} on NANOTOON`, url: `${typeof window !== 'undefined' ? window.location.origin : ''}/series/${series.slug}` })}
               className="flex items-center gap-1 px-2 py-1 rounded-lg border border-[#3f3f46] cursor-pointer text-xs text-[#a1a1aa] hover:border-[#a855f7]">Share</button>
             <button onClick={() => setShowSeriesComments(true)} className="flex items-center gap-1 px-2 py-1 rounded-lg border border-[#3f3f46] cursor-pointer text-xs text-[#c084fc] hover:border-[#a855f7]">Comments</button>
+            {user && series.author_id === user.id && (
+              <Link href={`/series/${series.slug}/edit`} className="flex items-center gap-1 px-2 py-1 rounded-lg border border-[#3f3f46] text-xs text-[#a1a1aa] hover:border-[#a855f7] no-underline text-center justify-center">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                Edit
+              </Link>
+            )}
           </div>
         </div>
         {maxCh > 0 && (

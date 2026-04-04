@@ -1,6 +1,7 @@
 "use client"
 import { useState, useEffect, useMemo } from 'react'
 import { GalleryCard } from '@/components/GalleryCard'
+import { LoadingSpinner } from '@/components/LoadingSpinner'
 import { useToast } from '@/components/Toast'
 import { createAnonClient } from '@/lib/supabase/anon'
 
@@ -72,7 +73,7 @@ export default function GalleryPage() {
   return (
     <div className="px-4 md:px-8 py-6">
       <h2 className="text-base font-semibold text-[#c084fc] mb-4">Gallery</h2>
-      {loading ? <p className="text-center py-12 text-[#52525b] text-sm">Loading...</p>
+      {loading ? <LoadingSpinner />
        : error ? (
         <div className="text-center py-12">
           <p className="text-[#f87171] text-sm mb-3">Failed to load gallery</p>

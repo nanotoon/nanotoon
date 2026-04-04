@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { SeriesCard } from '@/components/SeriesCard'
 import { categories } from '@/data/mock'
 import { createAnonClient } from '@/lib/supabase/anon'
+import { LoadingSpinner } from '@/components/LoadingSpinner'
 
 function SearchContent() {
   const searchParams = useSearchParams()
@@ -86,7 +87,7 @@ function SearchContent() {
         <PillGroup label="Genre" options={['All', ...categories.map((c: any) => c.name)]} value={genreFilter} onChange={setGenreFilter} />
         <PillGroup label="Format" options={['All', 'Series', 'One Shot']} value={formatFilter} onChange={setFormatFilter} />
       </div>
-      {loading ? <p className="text-center py-12 text-[#52525b] text-sm">Searching...</p> : (
+      {loading ? <LoadingSpinner text="Searching..." /> : (
         <>
           <p className="text-xs text-[#71717a] mb-3">{results.length} result{results.length !== 1 ? 's' : ''}</p>
           {results.length > 0 ? (
@@ -105,7 +106,7 @@ function SearchContent() {
 
 export default function SearchPage() {
   return (
-    <Suspense fallback={<p className="text-center py-12 text-[#52525b] text-sm">Searching...</p>}>
+    <Suspense fallback={<LoadingSpinner text="Searching..." />}>
       <SearchContent />
     </Suspense>
   )

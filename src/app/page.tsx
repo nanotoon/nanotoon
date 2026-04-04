@@ -2,6 +2,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
 import { SeriesCard } from '@/components/SeriesCard'
+import { LoadingSpinner } from '@/components/LoadingSpinner'
 import { useToast } from '@/components/Toast'
 import { createAnonClient } from '@/lib/supabase/anon'
 
@@ -64,7 +65,7 @@ export default function HomePage() {
             {timePills.map(t => (<button key={t} onClick={() => { setMvTime(t); show(`Showing: ${t}`) }} className={`px-3 py-1 rounded-full text-[0.73rem] cursor-pointer border whitespace-nowrap transition-all ${mvTime === t ? 'bg-[#7c3aed] border-[#7c3aed] text-white' : 'bg-transparent border-[#3f3f46] text-[#71717a] hover:border-[#a855f7] hover:text-[#c084fc]'}`}>{t}</button>))}
           </div>
         </div>
-        {loading ? <p className="text-center py-12 text-[#52525b] text-sm">Loading...</p> : mostViewed.length === 0 ? <p className="text-center py-12 text-[#52525b] text-sm">No series uploaded yet. Be the first!</p> : (
+        {loading ? <LoadingSpinner /> : mostViewed.length === 0 ? <p className="text-center py-12 text-[#52525b] text-sm">No series uploaded yet. Be the first!</p> : (
           <div className="grid gap-2.5 md:gap-4 grid-cols-3 md:grid-cols-9">{mostViewed.slice(0, isMobile ? 6 : 9).map((s, i) => (<SeriesCard key={s.id} title={s.title} slug={s.slug} author={s.profiles?.display_name || 'Unknown'} thumbnailUrl={s.thumbnail_url} latestChapter={0} rating="General" format={s.format} index={i} views={s.total_views} likes={s.total_likes} favorites={s.total_favorites} />))}</div>
         )}
       </section>

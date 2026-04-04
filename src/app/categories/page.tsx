@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { SeriesCard } from '@/components/SeriesCard'
+import { LoadingSpinner } from '@/components/LoadingSpinner'
 import { categories } from '@/data/mock'
 import { useToast } from '@/components/Toast'
 import { createAnonClient } from '@/lib/supabase/anon'
@@ -75,7 +76,7 @@ export default function CategoriesPage() {
           <span className="bg-[#27272a] text-[#c084fc] rounded-full px-2.5 py-0.5 text-[0.71rem] font-medium">{selectedCat || 'All'}</span>
           {selectedCat && <button onClick={() => { setSelectedCat(null); setLimit(45) }} className="bg-transparent border border-[#3f3f46] rounded-full px-2.5 py-0.5 text-[0.71rem] text-[#71717a] cursor-pointer hover:border-[#a855f7]">✕ Clear</button>}
         </div>
-        {loading && mvSeries.length === 0 ? <p className="text-center py-8 text-[#52525b] text-sm">Loading...</p> : mvSeries.length === 0 ? (
+        {loading && mvSeries.length === 0 ? <LoadingSpinner /> : mvSeries.length === 0 ? (
           <p className="text-center py-8 text-[#71717a] text-sm mb-8">No series yet.</p>
         ) : (
           <div className="grid gap-2.5 md:gap-4 grid-cols-3 md:grid-cols-9 mb-8">

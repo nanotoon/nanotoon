@@ -4,9 +4,32 @@ import { GENRES_ALL } from '@/data/mock'
 import { useAuth } from '@/contexts/AuthContext'
 import { createClient } from '@/lib/supabase/client'
 
-const MAX_FILE = 5 * 1024 * 1024
-const MAX_TOTAL = 30 * 1024 * 1024
+const MAX_FILE = 10 * 1024 * 1024
+const MAX_TOTAL_SERIES = 150 * 1024 * 1024
+const MAX_TOTAL_GALLERY = 50 * 1024 * 1024
 const MATURE_TEXT = "Violence & Dark Themes: Intense graphic violence and realistic blood are permitted in Mature-tagged chapters. Content solely depicting sadistic torture without narrative purpose is prohibited.\n\nNudity — Non-sexual nudity is allowed if genitalia are fully obscured/censored. Pornographic content is strictly prohibited.\n\nProhibited:\n• Sexual content involving minors — zero tolerance\n• Instructions for making drugs, explosives, or weapons\n• Content promoting self-harm or suicide\n• Malware, scams, or phishing\n• Content inciting real-world violence"
+
+// ─── Compress image to WebP ─────────────────────────────────
+async function compressImage(file: File, maxWidth: number, quality: number): Promise<File> {
+  return new Promise((resolve) => {
+    const img = new Image()
+    img.onload = () => {
+      const canvas = document.createElement('canvas')
+      let w = img.width, h = img.height
+      if (w > maxWidth) { h = Math.round(h * (maxWidth / w)); w = maxWidth }
+      canvas.width = w; canvas.height = h
+      const ctx = canvas.getContext('2d')!
+      ctx.drawImage(img, 0, 0, w, h)
+      canvas.toBlob((blob) => {
+        if (blob) {
+          resolve(new File([blob], file.name.replace(/\.[^.]+$/, '.webp'), { type: 'image/webp' }))
+        } else { resolve(file) }
+      }, 'image/webp', quality)
+    }
+    img.onerror = () => resolve(file)
+    img.src = URL.createObjectURL(file)
+  })
+}
 
 // ─── R2 upload helper ────────────────────────────────────────
 async function uploadToR2(file: File, path: string): Promise<string> {
@@ -63,6 +86,7 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
   const [gDesc, setGDesc] = useState('')
   const [gMature, setGMature] = useState(false)
   const [gTags, setGTags] = useState('')
+  const [dragging, setDragging] = useState(false)
   const [gReadMode, setGReadMode] = useState<'horizontal' | 'webtoon'>('horizontal')
 
   useEffect(() => { const c = () => setIsMobile(window.innerWidth < 768); c(); window.addEventListener('resize', c); return () => window.removeEventListener('resize', c) }, [])
@@ -85,20 +109,36 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
   const canPubGallery = !!(gTitle.trim() && files.length > 0)
   const canPublish = uploadType === 'gallery' ? canPubGallery : canPubSeries
 
-  function handleFiles(e: React.ChangeEvent<HTMLInputElement>) {
-    const nf = Array.from(e.target.files || []).filter(f => {
-      if (!f.type.match(/image\/(jpeg|png|webp)/)) return false
-      if (f.size > MAX_FILE) { onToast(f.name + ' exceeds 5MB'); return false }
+  function addFiles(newFiles: File[]) {
+    const maxTotal = uploadType === 'gallery' ? MAX_TOTAL_GALLERY : MAX_TOTAL_SERIES
+    const maxLabel = uploadType === 'gallery' ? '50MB' : '150MB'
+    const nf = newFiles.filter(f => {
+      if (!f.type.match(/image\/(jpeg|png|webp)/)) { onToast(f.name + ' is not a supported image'); return false }
+      if (f.size > MAX_FILE) { onToast(f.name + ' exceeds 10MB'); return false }
       return true
     })
-    const combined = [...files, ...nf].slice(0, 100)
-    if (combined.reduce((s, f) => s + f.size, 0) > MAX_TOTAL) { onToast('Total exceeds 30MB'); return }
+    const combined = [...files, ...nf].slice(0, 200)
+    const totalSize = combined.reduce((s, f) => s + f.size, 0)
+    if (totalSize > maxTotal) { onToast('Total exceeds ' + maxLabel + '! Remove some files.'); return }
     setFiles(combined)
   }
 
+  function handleFiles(e: React.ChangeEvent<HTMLInputElement>) {
+    addFiles(Array.from(e.target.files || []))
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault(); setDragging(false)
+    const droppedFiles = Array.from(e.dataTransfer.files)
+    if (droppedFiles.length > 0) addFiles(droppedFiles)
+  }
+
+  function handleDragOver(e: React.DragEvent) { e.preventDefault(); setDragging(true) }
+  function handleDragLeave(e: React.DragEvent) { e.preventDefault(); setDragging(false) }
+
   function handleThumb(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0]; if (!f) return
-    if (f.size > MAX_FILE) { onToast('Thumbnail must be under 5MB'); return }
+    if (f.size > MAX_FILE) { onToast('Thumbnail must be under 10MB'); return }
     setThumbFile(f)
     const r = new FileReader(); r.onload = ev => setThumbPreview(ev.target?.result as string); r.readAsDataURL(f)
   }
@@ -162,10 +202,11 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
     }
     const pageUrls: string[] = []
     for (let i = 0; i < files.length; i++) {
+      setProgress('Compressing page ' + (i + 1) + '/' + files.length + '...')
+      const compressed = await compressImage(files[i], 800, 0.85)
       setProgress('Uploading page ' + (i + 1) + '/' + files.length + '...')
-      const f = files[i], ext = f.name.split('.').pop() || 'jpg'
-      const path = 'chapters/' + seriesId + '/' + chapterNumber + '/' + String(i + 1).padStart(3, '0') + '.' + ext
-      const url = await uploadToR2(f, path)
+      const path = 'chapters/' + seriesId + '/' + chapterNumber + '/' + String(i + 1).padStart(3, '0') + '.webp'
+      const url = await uploadToR2(compressed, path)
       pageUrls.push(url)
     }
     setProgress('Saving chapter...')
@@ -261,15 +302,15 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
             <div><label className="block text-xs text-[#71717a] mb-1">Description</label><textarea value={gDesc} onChange={e => setGDesc(e.target.value)} rows={2} placeholder="About this artwork..." className="w-full bg-[#27272a] border border-[#3f3f46] rounded-lg p-2 text-[#e4e4e7] text-sm outline-none resize-y font-[inherit] focus:border-[#a855f7]" /></div>
             <div><label className="block text-xs text-[#71717a] mb-1">Tags <span className="text-[#52525b]">(comma separated)</span></label><input value={gTags} onChange={e => setGTags(e.target.value)} placeholder="fantasy, dark" className="w-full bg-[#27272a] border border-[#3f3f46] rounded-lg p-2 text-[#e4e4e7] text-sm outline-none focus:border-[#a855f7]" /></div>
             <div className="flex items-center gap-2"><label className="text-xs text-[#71717a]">Mature</label><MatureTip mobile={isMobile} /><button onClick={() => setGMature(!gMature)} className={'w-9 h-5 rounded-full border-none cursor-pointer relative shrink-0 ' + (gMature ? 'bg-amber-500' : 'bg-[#3f3f46]')}><span className={'absolute top-[1.5px] w-4 h-4 bg-white rounded-full transition-all ' + (gMature ? 'right-[2px]' : 'left-[1.5px]')}></span></button></div>
-            <div><label className="block text-xs text-[#71717a] mb-1.5">Reading Mode</label><div className="flex gap-1.5">
+            {files.length > 1 && (<div><label className="block text-xs text-[#71717a] mb-1.5">Reading Mode</label><div className="flex gap-1.5">
               <button onClick={() => setGReadMode('horizontal')} className={'px-3 py-1.5 rounded-lg cursor-pointer text-xs font-medium border ' + (gReadMode === 'horizontal' ? 'border-[#a855f7] text-[#c084fc] bg-purple-500/10' : 'border-[#3f3f46] text-[#71717a] bg-transparent')}>◀▶ Horizontal</button>
               <button onClick={() => setGReadMode('webtoon')} className={'px-3 py-1.5 rounded-lg cursor-pointer text-xs font-medium border ' + (gReadMode === 'webtoon' ? 'border-[#a855f7] text-[#c084fc] bg-purple-500/10' : 'border-[#3f3f46] text-[#71717a] bg-transparent')}>▼ Webtoon</button>
-            </div></div>
+            </div></div>)}
             {files.length > 1 && (<div><label className="block text-xs text-[#71717a] mb-1.5">Album Thumbnail</label><div className="flex items-center gap-3"><div className="w-12 h-[72px] rounded-lg bg-[#27272a] border border-dashed border-[#3f3f46] flex items-center justify-center shrink-0 overflow-hidden">{thumbPreview ? <img src={thumbPreview} className="w-full h-full object-cover" alt="" /> : <span className="text-[#52525b] text-lg">📷</span>}</div><button type="button" onClick={() => thumbRef.current?.click()} className="px-3 py-1.5 border border-[#3f3f46] rounded-lg bg-transparent text-[#c084fc] cursor-pointer text-xs">{thumbPreview ? 'Change' : 'Choose'}</button><input ref={thumbRef} type="file" className="hidden" accept=".jpg,.jpeg,.png,.webp" onChange={handleThumb} /></div></div>)}
-            <div><label className="block text-xs text-[#71717a] mb-1.5">Images <span className="text-[#52525b]">(max 5MB each, 30MB total)</span></label>
-              <div onClick={() => fileRef.current?.click()} className="border-2 border-dashed border-[#3f3f46] rounded-xl p-6 md:p-10 text-center cursor-pointer hover:border-[#a855f7]">
+            <div><label className="block text-xs text-[#71717a] mb-1.5">Images <span className="text-[#52525b]">(max 10MB each, 50MB total)</span></label>
+              <div onClick={() => fileRef.current?.click()} onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop} className={'border-2 border-dashed rounded-xl p-6 md:p-10 text-center cursor-pointer transition-colors ' + (dragging ? 'border-[#a855f7] bg-purple-500/10' : 'border-[#3f3f46] hover:border-[#a855f7]')}>
                 <input ref={fileRef} type="file" className="hidden" accept=".jpg,.jpeg,.png,.webp" multiple onChange={handleFiles} />
-                <p className="text-sm font-medium text-[#d4d4d8]">{files.length ? files.length + ' image(s) selected' : 'Click to select images'}</p>
+                <p className="text-sm font-medium text-[#d4d4d8]">{files.length ? files.length + ' image(s) selected' : dragging ? 'Drop images here!' : 'Click or drag & drop images'}</p>
                 {files.length > 0 && <div className="mt-2 max-h-[100px] overflow-y-auto text-left" onClick={e => e.stopPropagation()}>{files.map((f, i) => (<div key={i} className="flex items-center gap-2 py-1 border-b border-[#27272a] text-xs"><span className="text-[#52525b] w-5 text-center">{i+1}</span><span className="flex-1 truncate">{f.name}</span><span className="text-[#52525b]">{(f.size/1024).toFixed(0)}KB</span><button onClick={() => setFiles(p => p.filter((_,j) => j!==i))} className="text-[#71717a] hover:text-[#f87171] bg-transparent border-none cursor-pointer text-xs px-1">✕</button></div>))}</div>}
               </div></div>
             <button onClick={() => { setStep('choose'); setFiles([]) }} className="bg-transparent border-none text-[#71717a] cursor-pointer text-sm text-left">← Back</button>
@@ -308,11 +349,11 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
               <label className="block text-xs text-[#71717a] mb-1">Description</label>
               <textarea value={desc} onChange={e => setDesc(e.target.value)} rows={2} placeholder="Brief description..." className="w-full bg-[#27272a] border border-[#3f3f46] rounded-lg p-2 text-[#e4e4e7] text-sm outline-none resize-y font-[inherit] focus:border-[#a855f7]" />
             </div>)}
-            <div><label className="block text-xs text-[#71717a] mb-1.5">Chapter Pages <span className="text-[#52525b]">(max 5MB each, 30MB total)</span></label>
-              <div onClick={() => fileRef.current?.click()} className="border-2 border-dashed border-[#3f3f46] rounded-xl p-6 md:p-10 text-center cursor-pointer hover:border-[#a855f7]">
+            <div><label className="block text-xs text-[#71717a] mb-1.5">Chapter Pages <span className="text-[#52525b]">(max 10MB each, 150MB total)</span></label>
+              <div onClick={() => fileRef.current?.click()} onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop} className={'border-2 border-dashed rounded-xl p-6 md:p-10 text-center cursor-pointer transition-colors ' + (dragging ? 'border-[#a855f7] bg-purple-500/10' : 'border-[#3f3f46] hover:border-[#a855f7]')}>
                 <input ref={fileRef} type="file" className="hidden" accept=".jpg,.jpeg,.png,.webp" multiple onChange={handleFiles} />
-                <p className="text-sm font-medium text-[#d4d4d8]">{files.length ? files.length + ' page(s) selected' : 'Click to select pages'}</p>
-                <p className="text-[0.71rem] text-[#71717a] mt-0.5">{files.length ? 'Click to add more' : 'Select multiple images at once'}</p>
+                <p className="text-sm font-medium text-[#d4d4d8]">{files.length ? files.length + ' page(s) selected' : dragging ? 'Drop pages here!' : 'Click or drag & drop pages'}</p>
+                <p className="text-[0.71rem] text-[#71717a] mt-0.5">{files.length ? 'Click or drop to add more' : 'Select or drag multiple images'}</p>
                 {files.length > 0 && <div className="mt-2 max-h-[100px] overflow-y-auto text-left" onClick={e => e.stopPropagation()}>{files.map((f, i) => (<div key={i} className="flex items-center gap-2 py-1 border-b border-[#27272a] text-xs"><span className="text-[#52525b] w-5 text-center">{i+1}</span><span className="flex-1 truncate">{f.name}</span><span className="text-[#52525b]">{(f.size/1024).toFixed(0)}KB</span><button onClick={() => setFiles(p => p.filter((_,j) => j!==i))} className="text-[#71717a] hover:text-[#f87171] bg-transparent border-none cursor-pointer text-xs px-1">✕</button></div>))}</div>}
               </div></div>
             <button onClick={() => { setStep('choose'); setFiles([]) }} className="bg-transparent border-none text-[#71717a] cursor-pointer text-sm text-left">← Back</button>

@@ -1,4 +1,5 @@
 "use client"
+import { LoadingSpinner } from '@/components/LoadingSpinner'
 import { useState, useEffect, useMemo } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
@@ -21,6 +22,7 @@ export default function GalleryDetailPage() {
   const [page, setPage] = useState(0); const [liked, setLiked] = useState(false)
   const [showShare, setShowShare] = useState<any>(null)
   const [comments, setComments] = useState<any[]>([]); const [cText, setCText] = useState('')
+  const [editing, setEditing] = useState(false); const [editTitle, setEditTitle] = useState(''); const [editDesc, setEditDesc] = useState('')
 
   useEffect(() => {
     let c = false
@@ -51,7 +53,7 @@ export default function GalleryDetailPage() {
     if (data){setComments(p=>[data,...p]);setCText('');show('Posted!')}
   }
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center text-[#52525b]">Loading...</div>
+  if (loading) return <div className="min-h-screen"><LoadingSpinner /></div>
   if (!item) return <div className="min-h-screen flex items-center justify-center text-[#71717a]">Not found</div>
   const imgs=item.image_urls||[]; const rm=item.reading_mode||'horizontal'
 
@@ -68,6 +70,15 @@ export default function GalleryDetailPage() {
           <div className="flex flex-col gap-1.5 shrink-0">
             <button onClick={toggleLike} className={`flex items-center gap-1 px-2.5 py-1 rounded-lg border cursor-pointer text-xs ${liked?'bg-red-500/15 border-red-500/40 text-[#f87171]':'border-[#3f3f46] text-[#a1a1aa]'}`}>{liked?'Liked':'Like'}</button>
             <button onClick={()=>setShowShare({title:item.title,url:(typeof window!=='undefined'?window.location.origin:'')+'/gallery/'+id})} className="px-2 py-1 rounded-lg border border-[#3f3f46] cursor-pointer text-xs text-[#a1a1aa]">Share</button>
+            {user && item.author_id === user.id && (
+              <button onClick={()=>{setEditTitle(item.title);setEditDesc(item.description||'');setEditing(true)}} className="flex items-center gap-1 px-2 py-1 rounded-lg border border-[#3f3f46] cursor-pointer text-xs text-[#a1a1aa] hover:border-[#a855f7]">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                Edit
+              </button>
+            )}
+            {user && item.author_id === user.id && (
+              <button onClick={async()=>{if(!confirm('Delete this gallery item?'))return;await supabase.from('gallery').delete().eq('id',id);window.location.href='/gallery'}} className="px-2 py-1 rounded-lg border border-red-500/30 cursor-pointer text-xs text-[#f87171] hover:bg-red-500/10">Delete</button>
+            )}
           </div>
         </div>
       </div>
@@ -94,6 +105,25 @@ export default function GalleryDetailPage() {
         <div className="flex justify-end mt-2"><button onClick={postComment} className="px-4 py-2 bg-[#7c3aed] text-white rounded-xl cursor-pointer text-sm font-medium border-none hover:bg-[#6d28d9]">Post</button></div>
       </div>
       {showShare && <ShareModal title={showShare.title} url={showShare.url} onClose={()=>setShowShare(null)} />}
+      {editing && (
+        <div className="fixed inset-0 bg-black/90 z-[110] flex items-center justify-center p-4" onClick={()=>setEditing(false)}>
+          <div className="bg-[#18181b] rounded-2xl w-full max-w-[420px] border border-[#27272a] p-4" onClick={e=>e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-3">
+              <h3 className="font-semibold text-sm">Edit Gallery Item</h3>
+              <button onClick={()=>setEditing(false)} className="bg-[#27272a] border-none w-6 h-6 rounded-md cursor-pointer text-[#a1a1aa]">&times;</button>
+            </div>
+            <div className="flex flex-col gap-3">
+              <div><label className="block text-xs text-[#71717a] mb-1">Title</label><input value={editTitle} onChange={e=>setEditTitle(e.target.value)} className="w-full bg-[#27272a] border border-[#3f3f46] rounded-lg p-2 text-[#e4e4e7] text-sm outline-none focus:border-[#a855f7]" /></div>
+              <div><label className="block text-xs text-[#71717a] mb-1">Description</label><textarea value={editDesc} onChange={e=>setEditDesc(e.target.value)} rows={3} className="w-full bg-[#27272a] border border-[#3f3f46] rounded-lg p-2 text-[#e4e4e7] text-sm outline-none resize-y font-[inherit] focus:border-[#a855f7]" /></div>
+              <button onClick={async()=>{
+                const {error}=await supabase.from('gallery').update({title:editTitle.trim(),description:editDesc||null}).eq('id',id)
+                if(error){show('Failed: '+error.message);return}
+                setItem((p:any)=>({...p,title:editTitle.trim(),description:editDesc||null}));setEditing(false);show('Updated!')
+              }} className="py-2 bg-[#7c3aed] text-white rounded-lg text-sm font-medium border-none cursor-pointer hover:bg-[#6d28d9]">Save Changes</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
