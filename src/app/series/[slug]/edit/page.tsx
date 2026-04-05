@@ -24,6 +24,7 @@ export default function EditSeriesPage() {
   const [title, setTitle] = useState('')
   const [desc, setDesc] = useState('')
   const [format, setFormat] = useState('Series')
+  const [readingMode, setReadingMode] = useState<'webtoon' | 'horizontal'>('webtoon')
   const [genres, setGenres] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -54,6 +55,7 @@ export default function EditSeriesPage() {
       setTitle(s.title)
       setDesc(s.description || '')
       setFormat(s.format)
+      setReadingMode(s.reading_mode || 'webtoon')
       setGenres(new Set(s.genres || []))
       setThumbPreview(s.thumbnail_url)
       const { data: chs } = await anonDb.from('chapters').select('*').eq('series_id', s.id).order('chapter_number', { ascending: true }) as { data: any[] | null }
@@ -106,11 +108,11 @@ export default function EditSeriesPage() {
     }
     const { error } = await supabase.from('series').update({
       title, description: desc, format, genres: Array.from(genres),
-      thumbnail_url: thumbnailUrl, updated_at: new Date().toISOString()
+      thumbnail_url: thumbnailUrl, reading_mode: readingMode, updated_at: new Date().toISOString()
     }).eq('id', series.id)
     if (error) show('Save failed: ' + error.message)
     else {
-      setSeries((s: any) => ({ ...s, title, description: desc, format, genres: Array.from(genres), thumbnail_url: thumbnailUrl }))
+      setSeries((s: any) => ({ ...s, title, description: desc, format, genres: Array.from(genres), thumbnail_url: thumbnailUrl, reading_mode: readingMode }))
       setNewThumbFile(null)
       show('Changes saved!')
     }
@@ -299,6 +301,13 @@ export default function EditSeriesPage() {
             {['Series','One Shot'].map(f => (
               <button key={f} onClick={() => setFormat(f)} className={`px-4 py-1.5 rounded-lg cursor-pointer text-xs font-medium border transition-all ${format === f ? 'border-[#a855f7] text-[#c084fc] bg-purple-500/10' : 'border-[#3f3f46] text-[#71717a] bg-transparent hover:border-[#a855f7]'}`}>{f}</button>
             ))}
+          </div>
+        </div>
+        <div>
+          <label className="block text-xs text-[#71717a] mb-1.5">Reading Mode</label>
+          <div className="flex gap-1.5">
+            <button onClick={() => setReadingMode('webtoon')} className={`px-4 py-1.5 rounded-lg cursor-pointer text-xs font-medium border transition-all ${readingMode === 'webtoon' ? 'border-[#a855f7] text-[#c084fc] bg-purple-500/10' : 'border-[#3f3f46] text-[#71717a] bg-transparent hover:border-[#a855f7]'}`}>▼ Webtoon</button>
+            <button onClick={() => setReadingMode('horizontal')} className={`px-4 py-1.5 rounded-lg cursor-pointer text-xs font-medium border transition-all ${readingMode === 'horizontal' ? 'border-[#a855f7] text-[#c084fc] bg-purple-500/10' : 'border-[#3f3f46] text-[#71717a] bg-transparent hover:border-[#a855f7]'}`}>◀▶ Horizontal</button>
           </div>
         </div>
         <div>
