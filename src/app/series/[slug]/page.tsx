@@ -70,8 +70,6 @@ export default function ReaderPage() {
         if (chs?.length) { setCurrentCh(chs[chs.length - 1].chapter_number); setChapterViews(chs[chs.length - 1].views ?? 0) }
         const { data: sc } = await anonDb.from('comments').select('*, profiles!comments_user_id_fkey(display_name, handle, avatar_url)').eq('series_id', s.id).is('chapter_id', null).order('created_at', { ascending: false }) as { data: any[] | null }
         if (!c) setSeriesComments(sc ?? [])
-        // FIX: Use anonDb (not auth client) for reading user-specific state
-        // RLS has SELECT USING (true) so anon client can read these tables
         if (user) {
           const [lk, fv, fw] = await Promise.all([
             anonDb.from('likes').select('*').eq('user_id', user.id).eq('series_id', s.id).maybeSingle(),
@@ -107,6 +105,7 @@ export default function ReaderPage() {
     })
   }, [currentCh, series?.id, chapters.length, supabase])
 
+  // Fullscreen keyboard nav
   useEffect(() => {
     if (!showFullscreen) return
     const handler = (e: KeyboardEvent) => {
@@ -122,21 +121,6 @@ export default function ReaderPage() {
     return () => window.removeEventListener('keydown', handler)
   }, [showFullscreen, currentCh, chapters])
 
-  // Horizontal inline keyboard nav
-  useEffect(() => {
-    if (showFullscreen || !series) return
-    const ch = chapters.find(c => c.chapter_number === currentCh)
-    const isH = (ch?.reading_mode || series.reading_mode) === 'horizontal'
-    if (!isH) return
-    const handler = (e: KeyboardEvent) => {
-      const maxP = ch?.page_urls?.length ? ch.page_urls.length - 1 : 0
-      if (e.key === 'ArrowLeft') setHPage(p => Math.max(0, p - 1))
-      if (e.key === 'ArrowRight') setHPage(p => Math.min(maxP, p + 1))
-    }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [showFullscreen, currentCh, chapters, series])
-
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
     touchStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }
   }, [])
@@ -148,17 +132,6 @@ export default function ReaderPage() {
     if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 50) {
       if (dx < 0) setFullscreenPage(p => Math.min(maxPages - 1, p + 1))
       else setFullscreenPage(p => Math.max(0, p - 1))
-    }
-    touchStart.current = null
-  }, [])
-
-  const handleHTouchEnd = useCallback((e: React.TouchEvent, maxPages: number) => {
-    if (!touchStart.current) return
-    const dx = e.changedTouches[0].clientX - touchStart.current.x
-    const dy = e.changedTouches[0].clientY - touchStart.current.y
-    if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 50) {
-      if (dx < 0) setHPage(p => Math.min(maxPages - 1, p + 1))
-      else setHPage(p => Math.max(0, p - 1))
     }
     touchStart.current = null
   }, [])
@@ -235,8 +208,7 @@ export default function ReaderPage() {
 
   async function deleteComment(id: string, isSeries: boolean) {
     if (!confirm('Delete this comment?')) return
-    const { error } = await supabase.from('comments').delete().eq('id', id)
-    if (error) { show('Delete failed: ' + error.message); return }
+    await supabase.from('comments').delete().eq('id', id)
     if (isSeries) setSeriesComments(prev => prev.filter(c => c.id !== id))
     else setComments(prev => prev.filter(c => c.id !== id))
     show('Comment deleted')
@@ -316,14 +288,19 @@ export default function ReaderPage() {
 
         {/* ══ DESKTOP LAYOUT (md and above) ══════════════════════ */}
         <div className="hidden md:flex gap-3 items-start p-4">
+          {/* Back button */}
           <Link href="/" className="shrink-0 w-10 h-10 flex items-center justify-center bg-[#18181b] border border-[#3f3f46] rounded-lg text-[#a1a1aa] no-underline">
             <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="15 18 9 12 15 6"/></svg>
           </Link>
+
+          {/* Thumbnail — enlarged for desktop */}
           {series.thumbnail_url ? (
             <img src={series.thumbnail_url} className="w-[110px] h-[155px] rounded-lg shrink-0 object-cover" />
           ) : (
             <div className="w-[110px] h-[155px] rounded-lg shrink-0" style={{ background: `linear-gradient(135deg, ${GRADIENTS[0][0]}, ${GRADIENTS[0][1]})` }} />
           )}
+
+          {/* Series info — enlarged */}
           <div className="flex-1 min-w-0">
             <div className="font-bold text-2xl leading-tight">{series.title}</div>
             <div className="text-[#c084fc] text-base mt-0.5">by {authorName}</div>
@@ -343,7 +320,13 @@ export default function ReaderPage() {
               </button>
             </div>
           </div>
+
+          {/* Right-side action buttons — desktop size unchanged */}
           <div className="flex flex-col gap-2 shrink-0">
+            <button onClick={toggleLike} className={`flex items-center gap-2 px-5 py-2.5 rounded-lg border cursor-pointer text-base font-medium transition-all ${liked ? 'bg-red-500/15 border-red-500/40 text-[#f87171]' : 'bg-transparent border-[#3f3f46] text-[#a1a1aa] hover:border-red-500/40'}`}>
+              <svg className="w-[20px] h-[20px]" viewBox="0 0 24 24" fill={liked ? '#f87171' : 'none'} stroke="currentColor" strokeWidth="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+              {liked ? 'Liked' : 'Like'}
+            </button>
             <button onClick={toggleFollow} className={`flex items-center gap-2 px-5 py-2.5 rounded-lg border cursor-pointer text-base font-medium transition-all ${isFollowing ? 'bg-purple-500/15 border-purple-500/40 text-[#c084fc]' : 'bg-[#7c3aed] border-[#7c3aed] text-white hover:bg-[#6d28d9]'}`}>
               <svg className="w-[20px] h-[20px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
               {isFollowing ? 'Following' : 'Follow'}
@@ -367,18 +350,28 @@ export default function ReaderPage() {
 
         {/* ══ MOBILE LAYOUT ══════════════════════════════════════ */}
         <div className="flex flex-col gap-2 p-3 md:hidden">
+          {/* Row 1: Thumbnail | Info | Action buttons (30% smaller) */}
           <div className="flex gap-2 items-start">
+            {/* Thumbnail — positioned at far left with no preceding back button */}
             {series.thumbnail_url ? (
               <img src={series.thumbnail_url} className="w-[48px] h-[68px] rounded-lg shrink-0 object-cover" />
             ) : (
               <div className="w-[48px] h-[68px] rounded-lg shrink-0" style={{ background: `linear-gradient(135deg, ${GRADIENTS[0][0]}, ${GRADIENTS[0][1]})` }} />
             )}
+
+            {/* Info: title, by author, description wraps naturally */}
             <div className="flex-1 min-w-0">
               <div className="font-bold text-sm leading-tight">{series.title}</div>
               <div className="text-[#c084fc] text-xs mt-0.5">by {authorName}</div>
               <div className="text-xs text-[#a1a1aa] mt-1 break-words">{series.description}</div>
             </div>
+
+            {/* Action buttons — 30% smaller, follow pinned at top */}
             <div className="flex flex-col gap-1 shrink-0">
+              <button onClick={toggleLike} className={`flex items-center gap-1 px-2 py-1 rounded-lg border cursor-pointer text-[0.6rem] font-medium transition-all ${liked ? 'bg-red-500/15 border-red-500/40 text-[#f87171]' : 'bg-transparent border-[#3f3f46] text-[#a1a1aa] hover:border-red-500/40'}`}>
+                <svg className="w-[9px] h-[9px]" viewBox="0 0 24 24" fill={liked ? '#f87171' : 'none'} stroke="currentColor" strokeWidth="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+                {liked ? 'Liked' : 'Like'}
+              </button>
               <button onClick={toggleFollow} className={`flex items-center gap-1 px-2 py-1 rounded-lg border cursor-pointer text-[0.6rem] font-medium transition-all ${isFollowing ? 'bg-purple-500/15 border-purple-500/40 text-[#c084fc]' : 'bg-[#7c3aed] border-[#7c3aed] text-white hover:bg-[#6d28d9]'}`}>
                 <svg className="w-[9px] h-[9px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
                 {isFollowing ? 'Following' : 'Follow'}
@@ -399,6 +392,8 @@ export default function ReaderPage() {
               )}
             </div>
           </div>
+
+          {/* Row 2: Back button + Views / Likes / Share */}
           <div className="flex items-center gap-2 flex-wrap">
             <Link href="/" className="shrink-0 w-8 h-8 flex items-center justify-center bg-[#18181b] border border-[#3f3f46] rounded-lg text-[#a1a1aa] no-underline">
               <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="15 18 9 12 15 6"/></svg>
@@ -445,10 +440,8 @@ export default function ReaderPage() {
       <div className={`max-w-[800px] mx-auto p-1.5 md:p-3 transition-opacity duration-200 ${panelFade ? 'opacity-0' : 'opacity-100'}`}>
         {panels ? (
           isHorizontal ? (
-            /* ── Horizontal (page-by-page) mode — same as gallery ── */
-            <div className="relative"
-              onTouchStart={handleTouchStart}
-              onTouchEnd={(e) => handleHTouchEnd(e, panels.length)}>
+            /* ── Horizontal (page-by-page) mode ── */
+            <div className="relative">
               <img src={panels[hPage]} className="w-full rounded-lg" alt={`Page ${hPage + 1}`} />
               {panels.length > 1 && (
                 <div className="flex items-center justify-center gap-3 mt-3">
@@ -468,19 +461,6 @@ export default function ReaderPage() {
                   </button>
                 </div>
               )}
-              {panels.length === 1 && (
-                <div className="flex justify-center mt-3">
-                  <button onClick={() => { setFullscreenPage(0); setShowFullscreen(true) }}
-                    title="Full Screen"
-                    className="group relative w-[40px] h-[38px] border border-[#3f3f46] rounded-xl bg-transparent text-[#a1a1aa] cursor-pointer hover:border-[#a855f7] flex items-center justify-center">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/>
-                      <line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/>
-                    </svg>
-                    <span className="absolute -top-8 left-1/2 -translate-x-1/2 px-2 py-1 bg-[#27272a] border border-[#3f3f46] rounded text-[0.65rem] text-[#e4e4e7] whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">Full Screen</span>
-                  </button>
-                </div>
-              )}
             </div>
           ) : (
             /* ── Webtoon (vertical scroll) mode ── */
@@ -488,12 +468,10 @@ export default function ReaderPage() {
               <img key={pi} src={url} className="w-full" style={{ marginTop: pi > 0 ? '-4px' : '0' }} alt={`Page ${pi+1}`} />
             ))
           )
-        ) : (
-          <div className="w-full aspect-[3/4] flex items-center justify-center text-[#52525b] text-sm bg-[#18181b] rounded-xl">{maxCh === 0 ? 'No chapters yet' : 'No pages in this chapter'}</div>
-        )}
+        ) : <div className="w-full aspect-[3/4] flex items-center justify-center text-[#52525b] text-sm bg-[#18181b] rounded-xl">{maxCh === 0 ? 'No chapters yet' : 'No pages in this chapter'}</div>}
       </div>
 
-      {/* ─── Chapter nav ──────────────────── */}
+      {/* ─── Chapter nav + Fullscreen button ──────────────────── */}
       {maxCh > 0 && (
         <div className="max-w-[800px] mx-auto mt-4 flex gap-2 px-3">
           <button onClick={() => { if (currentCh > 1) switchChapter(currentCh - 1); else show('First chapter!') }}
@@ -505,8 +483,10 @@ export default function ReaderPage() {
               title="Full Screen"
               className="group relative w-[44px] shrink-0 py-2.5 border border-[#3f3f46] rounded-xl bg-transparent text-[#a1a1aa] cursor-pointer hover:border-[#a855f7] flex items-center justify-center">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/>
-                <line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/>
+                <polyline points="15 3 21 3 21 9"/>
+                <polyline points="9 21 3 21 3 15"/>
+                <line x1="21" y1="3" x2="14" y2="10"/>
+                <line x1="3" y1="21" x2="10" y2="14"/>
               </svg>
               <span className="absolute -top-8 left-1/2 -translate-x-1/2 px-2 py-1 bg-[#27272a] border border-[#3f3f46] rounded text-[0.65rem] text-[#e4e4e7] whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">Full Screen</span>
             </button>
@@ -547,7 +527,7 @@ export default function ReaderPage() {
         </div>
       )}
 
-      {/* ─── Fullscreen overlay ────────────── */}
+      {/* ─── Fullscreen overlay (horizontal mode) ────────────── */}
       {showFullscreen && panels && (
         <div className="fixed inset-0 bg-black z-[300] flex flex-col"
           onTouchStart={handleTouchStart}
