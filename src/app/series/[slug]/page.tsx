@@ -1,6 +1,6 @@
 'use client'
 import { LoadingSpinner } from '@/components/LoadingSpinner'
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { GRADIENTS } from '@/data/mock'
@@ -40,8 +40,6 @@ export default function ReaderPage() {
   const [showShare, setShowShare] = useState<any>(null)
   const [showReport, setShowReport] = useState<string | null>(null)
   const [showSeriesComments, setShowSeriesComments] = useState(false)
-  const [showFullscreen, setShowFullscreen] = useState(false)
-  const [fullscreenPage, setFullscreenPage] = useState(0)
   const [commentText, setCommentText] = useState('')
   const [seriesCommentText, setSeriesCommentText] = useState('')
   const [panelFade, setPanelFade] = useState(false)
@@ -52,9 +50,6 @@ export default function ReaderPage() {
   const [editText, setEditText] = useState('')
   const [replyingTo, setReplyingTo] = useState<string | null>(null)
   const [replyText, setReplyText] = useState('')
-  const [hPage, setHPage] = useState(0)
-
-  const touchStart = useRef<{ x: number; y: number } | null>(null)
 
   useEffect(() => {
     let c = false
@@ -72,10 +67,10 @@ export default function ReaderPage() {
         if (!c) setSeriesComments(sc ?? [])
         if (user) {
           const [lk, fv, fw] = await Promise.all([
-            anonDb.from('likes').select('*').eq('user_id', user.id).eq('series_id', s.id).maybeSingle(),
-            anonDb.from('favorites').select('*').eq('user_id', user.id).eq('series_id', s.id).maybeSingle(),
-            anonDb.from('follows').select('*').eq('follower_id', user.id).eq('following_id', s.author_id).maybeSingle(),
-          ]) as any[]
+            supabase.from('likes').select('*').eq('user_id', user.id).eq('series_id', s.id).maybeSingle(),
+            supabase.from('favorites').select('*').eq('user_id', user.id).eq('series_id', s.id).maybeSingle(),
+            supabase.from('follows').select('*').eq('follower_id', user.id).eq('following_id', s.author_id).maybeSingle(),
+          ])
           if (!c) { setLiked(!!lk.data); setFavorited(!!fv.data); setIsFollowing(!!fw.data) }
         }
         if (!viewIncremented.current) {
@@ -89,14 +84,13 @@ export default function ReaderPage() {
     }
     load()
     return () => { c = true }
-  }, [slug, user, anonDb, supabase])
+  }, [slug, user, supabase])
 
   useEffect(() => {
     if (!series || !chapters.length) return
     const ch = chapters.find(c => c.chapter_number === currentCh)
     if (!ch) return
     setChapterViews(ch.views ?? 0)
-    setHPage(0)
     anonDb.from('comments').select('*, profiles!comments_user_id_fkey(display_name, handle, avatar_url)').eq('chapter_id', ch.id).order('created_at', { ascending: false })
       .then(({ data }: any) => setComments(data ?? []))
     supabase.from('chapters').update({ views: (ch.views ?? 0) + 1 }).eq('id', ch.id).then(() => {
@@ -105,47 +99,14 @@ export default function ReaderPage() {
     })
   }, [currentCh, series?.id, chapters.length, supabase])
 
-  // Fullscreen keyboard nav
-  useEffect(() => {
-    if (!showFullscreen) return
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setShowFullscreen(false)
-      if (e.key === 'ArrowLeft') setFullscreenPage(p => Math.max(0, p - 1))
-      if (e.key === 'ArrowRight') {
-        const ch = chapters.find(c => c.chapter_number === currentCh)
-        const maxP = ch?.page_urls?.length ? ch.page_urls.length - 1 : 0
-        setFullscreenPage(p => Math.min(maxP, p + 1))
-      }
-    }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [showFullscreen, currentCh, chapters])
-
-  const handleTouchStart = useCallback((e: React.TouchEvent) => {
-    touchStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }
-  }, [])
-
-  const handleTouchEnd = useCallback((e: React.TouchEvent, maxPages: number) => {
-    if (!touchStart.current) return
-    const dx = e.changedTouches[0].clientX - touchStart.current.x
-    const dy = e.changedTouches[0].clientY - touchStart.current.y
-    if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 50) {
-      if (dx < 0) setFullscreenPage(p => Math.min(maxPages - 1, p + 1))
-      else setFullscreenPage(p => Math.max(0, p - 1))
-    }
-    touchStart.current = null
-  }, [])
-
   async function toggleLike() {
     if (!user || !series) { show('Sign in to like!'); return }
     if (liked) {
-      const { error } = await supabase.from('likes').delete().eq('user_id', user.id).eq('series_id', series.id)
-      if (error) { show('Failed: ' + error.message); return }
+      await supabase.from('likes').delete().eq('user_id', user.id).eq('series_id', series.id)
       await supabase.from('series').update({ total_likes: Math.max(0, (series.total_likes ?? 1) - 1) }).eq('id', series.id)
       setSeries((s: any) => ({ ...s, total_likes: Math.max(0, (s.total_likes ?? 1) - 1) })); setLiked(false); show('Like removed')
     } else {
-      const { error } = await supabase.from('likes').insert({ user_id: user.id, series_id: series.id })
-      if (error) { show('Failed: ' + error.message); return }
+      await supabase.from('likes').insert({ user_id: user.id, series_id: series.id })
       await supabase.from('series').update({ total_likes: (series.total_likes ?? 0) + 1 }).eq('id', series.id)
       setSeries((s: any) => ({ ...s, total_likes: (s.total_likes ?? 0) + 1 })); setLiked(true); show('Liked!')
     }
@@ -154,13 +115,9 @@ export default function ReaderPage() {
   async function toggleFav() {
     if (!user || !series) { show('Sign in to favorite!'); return }
     if (favorited) {
-      const { error } = await supabase.from('favorites').delete().eq('user_id', user.id).eq('series_id', series.id)
-      if (error) { show('Failed: ' + error.message); return }
-      setFavorited(false); show('Removed from Favorites')
+      await supabase.from('favorites').delete().eq('user_id', user.id).eq('series_id', series.id); setFavorited(false); show('Removed from Favorites')
     } else {
-      const { error } = await supabase.from('favorites').insert({ user_id: user.id, series_id: series.id })
-      if (error) { show('Failed: ' + error.message); return }
-      setFavorited(true); show('Added to Favorites!')
+      await supabase.from('favorites').insert({ user_id: user.id, series_id: series.id }); setFavorited(true); show('Added to Favorites!')
     }
   }
 
@@ -168,12 +125,10 @@ export default function ReaderPage() {
     if (!user || !series) { show('Sign in to follow!'); return }
     if (user.id === series.author_id) { show("Can't follow yourself"); return }
     if (isFollowing) {
-      const { error } = await supabase.from('follows').delete().eq('follower_id', user.id).eq('following_id', series.author_id)
-      if (error) { show('Failed: ' + error.message); return }
+      await supabase.from('follows').delete().eq('follower_id', user.id).eq('following_id', series.author_id)
       setIsFollowing(false); show('Unfollowed')
     } else {
-      const { error } = await supabase.from('follows').insert({ follower_id: user.id, following_id: series.author_id })
-      if (error) { show('Failed: ' + error.message); return }
+      await supabase.from('follows').insert({ follower_id: user.id, following_id: series.author_id })
       setIsFollowing(true); show('Following!')
     }
   }
@@ -215,7 +170,7 @@ export default function ReaderPage() {
   }
 
   function switchChapter(ch: number) {
-    setPanelFade(true); setTimeout(() => { setCurrentCh(ch); setHPage(0); setShowChapters(false); setPanelFade(false); show(`Chapter ${ch}`) }, 200)
+    setPanelFade(true); setTimeout(() => { setCurrentCh(ch); setShowChapters(false); setPanelFade(false); show(`Chapter ${ch}`) }, 200)
   }
 
   function CommentItem({ c, isSeries, isReply }: { c: any; isSeries: boolean; isReply?: boolean }) {
@@ -276,158 +231,73 @@ export default function ReaderPage() {
   const maxCh = chapters.length > 0 ? chapters[chapters.length - 1].chapter_number : 0
   const currentChData = chapters.find(c => c.chapter_number === currentCh)
   const panels = currentChData?.page_urls?.length ? currentChData.page_urls : null
-  const isHorizontal = (currentChData?.reading_mode || series.reading_mode) === 'horizontal'
   const authorName = series.profiles?.display_name || 'Unknown'
   const topLevelComments = comments.filter(c => !c.parent_id)
   const topLevelSeriesComments = seriesComments.filter(c => !c.parent_id)
 
   return (
     <div id="reader-scroll" className="min-h-screen bg-black">
-      {/* ─── HEADER / FLOAT MENU ─────────────────────────────── */}
       <div className="bg-[#09090b]/95 backdrop-blur border-b border-[#27272a] sticky top-0 z-20">
-
-        {/* ══ DESKTOP LAYOUT (md and above) ══════════════════════ */}
-        <div className="hidden md:flex gap-3 items-start p-4">
-          {/* Back button */}
-          <Link href="/" className="shrink-0 w-10 h-10 flex items-center justify-center bg-[#18181b] border border-[#3f3f46] rounded-lg text-[#a1a1aa] no-underline">
-            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+        <div className="flex gap-2 items-start p-3 md:p-4">
+          <Link href="/" className="shrink-0 w-8 h-8 flex items-center justify-center bg-[#18181b] border border-[#3f3f46] rounded-lg text-[#a1a1aa] no-underline">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="15 18 9 12 15 6"/></svg>
           </Link>
-
-          {/* Thumbnail — enlarged for desktop */}
-          {series.thumbnail_url ? (
-            <img src={series.thumbnail_url} className="w-[110px] h-[155px] rounded-lg shrink-0 object-cover" />
-          ) : (
-            <div className="w-[110px] h-[155px] rounded-lg shrink-0" style={{ background: `linear-gradient(135deg, ${GRADIENTS[0][0]}, ${GRADIENTS[0][1]})` }} />
-          )}
-
-          {/* Series info — enlarged */}
+          {series.thumbnail_url ? <img src={series.thumbnail_url} className="hidden md:block w-[54px] h-[76px] rounded-lg shrink-0 object-cover" /> :
+            <div className="hidden md:block w-[54px] h-[76px] rounded-lg shrink-0" style={{ background: `linear-gradient(135deg, ${GRADIENTS[0][0]}, ${GRADIENTS[0][1]})` }}></div>}
           <div className="flex-1 min-w-0">
-            <div className="font-bold text-2xl leading-tight">{series.title}</div>
-            <div className="text-[#c084fc] text-base mt-0.5">by {authorName}</div>
-            <div className="text-base text-[#a1a1aa] mt-1 line-clamp-2">{series.description}</div>
-            <div className="flex items-center gap-3 mt-2 flex-wrap">
-              <span className="flex items-center gap-1 text-base text-[#71717a]">
-                <svg className="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                <span className="text-[#a1a1aa] font-medium">{fmtNum(series.total_views)}</span> Views
+            <div className="font-bold text-sm md:text-base">{series.title}</div>
+            <div className="text-[#c084fc] text-xs mt-0.5">by {authorName}</div>
+            <div className="text-xs text-[#a1a1aa] mt-1 line-clamp-2">{series.description}</div>
+            <div className="flex items-center gap-3 mt-1.5 flex-wrap">
+              <span className="flex items-center gap-1 text-[0.68rem] text-[#71717a]">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                <span className="text-[#a1a1aa] font-medium">{fmtNum(series.total_views)}</span> Series Views
               </span>
-              <span className="flex items-center gap-1 text-base text-[#71717a]">
-                <svg className="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
-                <span className="text-[#a1a1aa] font-medium">{fmtNum(series.total_likes)}</span> Like
-              </span>
-              <button onClick={() => setShowShare({ title: `${series.title} on NANOTOON`, url: `${typeof window !== 'undefined' ? window.location.origin : ''}/series/${series.slug}` })}
-                className="flex items-center gap-1 px-4 py-1.5 rounded-lg border border-[#3f3f46] cursor-pointer text-base text-[#a1a1aa] hover:border-[#a855f7] bg-transparent">
-                Share
-              </button>
+              {maxCh > 0 && <span className="flex items-center gap-1 text-[0.68rem] text-[#71717a]">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+                <span className="text-[#a1a1aa] font-medium">{fmtNum(chapterViews)}</span> Ch. {currentCh} Views
+              </span>}
             </div>
           </div>
-
-          {/* Right-side action buttons — desktop size unchanged */}
-          <div className="flex flex-col gap-2 shrink-0">
-            <button onClick={toggleLike} className={`flex items-center gap-2 px-5 py-2.5 rounded-lg border cursor-pointer text-base font-medium transition-all ${liked ? 'bg-red-500/15 border-red-500/40 text-[#f87171]' : 'bg-transparent border-[#3f3f46] text-[#a1a1aa] hover:border-red-500/40'}`}>
-              <svg className="w-[20px] h-[20px]" viewBox="0 0 24 24" fill={liked ? '#f87171' : 'none'} stroke="currentColor" strokeWidth="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
-              {liked ? 'Liked' : 'Like'}
+          <div className="flex flex-col gap-1.5 text-xs shrink-0">
+            {/* Like - prominent */}
+            <button onClick={toggleLike} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border cursor-pointer text-sm font-medium transition-all ${liked ? 'bg-red-500/15 border-red-500/40 text-[#f87171]' : 'bg-transparent border-[#3f3f46] text-[#a1a1aa] hover:border-red-500/40'}`}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill={liked ? '#f87171' : 'none'} stroke="currentColor" strokeWidth="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+              {fmtNum(series.total_likes)} {liked ? 'Liked' : 'Like'}
             </button>
-            <button onClick={toggleFollow} className={`flex items-center gap-2 px-5 py-2.5 rounded-lg border cursor-pointer text-base font-medium transition-all ${isFollowing ? 'bg-purple-500/15 border-purple-500/40 text-[#c084fc]' : 'bg-[#7c3aed] border-[#7c3aed] text-white hover:bg-[#6d28d9]'}`}>
-              <svg className="w-[20px] h-[20px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
+            {/* Follow - prominent */}
+            <button onClick={toggleFollow} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border cursor-pointer text-sm font-medium transition-all ${isFollowing ? 'bg-purple-500/15 border-purple-500/40 text-[#c084fc]' : 'bg-[#7c3aed] border-[#7c3aed] text-white hover:bg-[#6d28d9]'}`}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
               {isFollowing ? 'Following' : 'Follow'}
             </button>
-            <button onClick={toggleFav} className={`flex items-center gap-2 px-4 py-2 rounded-lg border cursor-pointer text-sm transition-all ${favorited ? 'border-yellow-500/40 text-[#fbbf24]' : 'border-[#3f3f46] text-[#a1a1aa] hover:border-yellow-500/40'}`}>
-              <svg className="w-[16px] h-[16px]" viewBox="0 0 24 24" fill={favorited ? '#fbbf24' : 'none'} stroke="currentColor" strokeWidth="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            <button onClick={toggleFav} className={`flex items-center gap-1 px-2 py-1 rounded-lg border cursor-pointer text-xs transition-all ${favorited ? 'border-yellow-500/40 text-[#fbbf24]' : 'border-[#3f3f46] text-[#a1a1aa] hover:border-yellow-500/40'}`}>
+              <svg width="10" height="10" viewBox="0 0 24 24" fill={favorited ? '#fbbf24' : 'none'} stroke="currentColor" strokeWidth="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
               {favorited ? 'Favorited' : 'Favorite'}
             </button>
-            <button onClick={() => setShowSeriesComments(true)} className="flex items-center gap-2 px-4 py-2 rounded-lg border border-[#3f3f46] cursor-pointer text-sm text-[#c084fc] hover:border-[#a855f7]">
-              <svg className="w-[14px] h-[14px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-              Comments
-            </button>
+            <button onClick={() => setShowShare({ title: `${series.title} on NANOTOON`, url: `${typeof window !== 'undefined' ? window.location.origin : ''}/series/${series.slug}` })}
+              className="flex items-center gap-1 px-2 py-1 rounded-lg border border-[#3f3f46] cursor-pointer text-xs text-[#a1a1aa] hover:border-[#a855f7]">Share</button>
+            <button onClick={() => setShowSeriesComments(true)} className="flex items-center gap-1 px-2 py-1 rounded-lg border border-[#3f3f46] cursor-pointer text-xs text-[#c084fc] hover:border-[#a855f7]">Comments</button>
             {user && series.author_id === user.id && (
-              <Link href={`/series/${series.slug}/edit`} className="flex items-center gap-2 px-4 py-2 rounded-lg border border-[#3f3f46] text-sm text-[#a1a1aa] hover:border-[#a855f7] no-underline text-center justify-center">
-                <svg className="w-[14px] h-[14px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+              <Link href={`/series/${series.slug}/edit`} className="flex items-center gap-1 px-2 py-1 rounded-lg border border-[#3f3f46] text-xs text-[#a1a1aa] hover:border-[#a855f7] no-underline text-center justify-center">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                 Edit
               </Link>
             )}
           </div>
         </div>
-
-        {/* ══ MOBILE LAYOUT ══════════════════════════════════════ */}
-        <div className="flex flex-col gap-2 p-3 md:hidden">
-          {/* Row 1: Thumbnail | Info | Action buttons (30% smaller) */}
-          <div className="flex gap-2 items-start">
-            {/* Thumbnail — positioned at far left with no preceding back button */}
-            {series.thumbnail_url ? (
-              <img src={series.thumbnail_url} className="w-[48px] h-[68px] rounded-lg shrink-0 object-cover" />
-            ) : (
-              <div className="w-[48px] h-[68px] rounded-lg shrink-0" style={{ background: `linear-gradient(135deg, ${GRADIENTS[0][0]}, ${GRADIENTS[0][1]})` }} />
-            )}
-
-            {/* Info: title, by author, description wraps naturally */}
-            <div className="flex-1 min-w-0">
-              <div className="font-bold text-sm leading-tight">{series.title}</div>
-              <div className="text-[#c084fc] text-xs mt-0.5">by {authorName}</div>
-              <div className="text-xs text-[#a1a1aa] mt-1 break-words">{series.description}</div>
-            </div>
-
-            {/* Action buttons — 30% smaller, follow pinned at top */}
-            <div className="flex flex-col gap-1 shrink-0">
-              <button onClick={toggleLike} className={`flex items-center gap-1 px-2 py-1 rounded-lg border cursor-pointer text-[0.6rem] font-medium transition-all ${liked ? 'bg-red-500/15 border-red-500/40 text-[#f87171]' : 'bg-transparent border-[#3f3f46] text-[#a1a1aa] hover:border-red-500/40'}`}>
-                <svg className="w-[9px] h-[9px]" viewBox="0 0 24 24" fill={liked ? '#f87171' : 'none'} stroke="currentColor" strokeWidth="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
-                {liked ? 'Liked' : 'Like'}
-              </button>
-              <button onClick={toggleFollow} className={`flex items-center gap-1 px-2 py-1 rounded-lg border cursor-pointer text-[0.6rem] font-medium transition-all ${isFollowing ? 'bg-purple-500/15 border-purple-500/40 text-[#c084fc]' : 'bg-[#7c3aed] border-[#7c3aed] text-white hover:bg-[#6d28d9]'}`}>
-                <svg className="w-[9px] h-[9px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
-                {isFollowing ? 'Following' : 'Follow'}
-              </button>
-              <button onClick={toggleFav} className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded-lg border cursor-pointer text-[0.6rem] transition-all ${favorited ? 'border-yellow-500/40 text-[#fbbf24]' : 'border-[#3f3f46] text-[#a1a1aa] hover:border-yellow-500/40'}`}>
-                <svg className="w-[7px] h-[7px]" viewBox="0 0 24 24" fill={favorited ? '#fbbf24' : 'none'} stroke="currentColor" strokeWidth="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-                {favorited ? 'Favorited' : 'Favorite'}
-              </button>
-              <button onClick={() => setShowSeriesComments(true)} className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-lg border border-[#3f3f46] cursor-pointer text-[0.6rem] text-[#c084fc] hover:border-[#a855f7]">
-                <svg className="w-[7px] h-[7px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-                Comments
-              </button>
-              {user && series.author_id === user.id && (
-                <Link href={`/series/${series.slug}/edit`} className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-lg border border-[#3f3f46] text-[0.6rem] text-[#a1a1aa] hover:border-[#a855f7] no-underline justify-center">
-                  <svg className="w-[7px] h-[7px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                  Edit
-                </Link>
-              )}
-            </div>
-          </div>
-
-          {/* Row 2: Back button + Views / Likes / Share */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <Link href="/" className="shrink-0 w-8 h-8 flex items-center justify-center bg-[#18181b] border border-[#3f3f46] rounded-lg text-[#a1a1aa] no-underline">
-              <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="15 18 9 12 15 6"/></svg>
-            </Link>
-            <span className="flex items-center gap-1 text-[0.68rem] text-[#71717a]">
-              <svg className="w-[10px] h-[10px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-              <span className="text-[#a1a1aa] font-medium">{fmtNum(series.total_views)}</span> Views
-            </span>
-            <span className="flex items-center gap-1 text-[0.68rem] text-[#71717a]">
-              <svg className="w-[10px] h-[10px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
-              <span className="text-[#a1a1aa] font-medium">{fmtNum(series.total_likes)}</span> Like
-            </span>
-            <button onClick={() => setShowShare({ title: `${series.title} on NANOTOON`, url: `${typeof window !== 'undefined' ? window.location.origin : ''}/series/${series.slug}` })}
-              className="flex items-center gap-1 px-2 py-0.5 rounded-lg border border-[#3f3f46] cursor-pointer text-[0.68rem] text-[#a1a1aa] hover:border-[#a855f7] bg-transparent">
-              Share
-            </button>
-          </div>
-        </div>
-
-        {/* ─── Chapter dropdown ───────────────────────────────── */}
         {maxCh > 0 && (
           <div className="px-4 pb-3 border-t border-[#27272a] mt-1">
-            <button onClick={() => setShowChapters(!showChapters)} className="w-full flex items-center justify-center gap-2 py-1.5 md:py-2 cursor-pointer bg-transparent border-none">
-              <span className="text-xs md:text-sm font-medium text-[#e4e4e7]">
-                Chapter {currentCh}{currentChData?.title ? `: ${currentChData.title}` : ''} <span className="text-[#71717a] font-normal">(views: {fmtNum(chapterViews)})</span>
-              </span>
-              <span className="text-xs md:text-sm text-[#c084fc]">{showChapters ? '▲' : '▼'}</span>
+            <button onClick={() => setShowChapters(!showChapters)} className="w-full flex items-center justify-center gap-2 py-1.5 cursor-pointer bg-transparent border-none">
+              <span className="text-xs font-medium text-[#e4e4e7]">Chapter {currentCh}</span>
+              <span className="text-xs text-[#c084fc]">{showChapters ? '▲' : '▼'}</span>
             </button>
             {showChapters && (
-              <div className="max-h-[220px] overflow-y-auto bg-[#0d0d0f] rounded-lg p-1 mt-2">
+              <div className="max-h-[180px] overflow-y-auto bg-[#0d0d0f] rounded-lg p-1 mt-2">
                 {chapters.map(ch => (
                   <button key={ch.id} onClick={() => switchChapter(ch.chapter_number)}
-                    className={`w-full p-2 md:p-2.5 rounded-lg cursor-pointer text-xs md:text-sm flex items-center justify-center text-center border-none ${ch.chapter_number === currentCh ? 'bg-purple-500/15 text-[#c084fc]' : 'bg-transparent text-[#e4e4e7] hover:bg-[#27272a]'}`}>
-                    <span>Chapter {ch.chapter_number}{ch.title ? `: ${ch.title}` : ''} <span className="text-[#71717a]">(views: {fmtNum(ch.views)})</span></span>
+                    className={`w-full p-2 rounded-lg cursor-pointer text-xs flex items-center justify-between border-none ${ch.chapter_number === currentCh ? 'bg-purple-500/15 text-[#c084fc]' : 'bg-transparent text-[#e4e4e7] hover:bg-[#27272a]'}`}>
+                    <span>Ch. {ch.chapter_number} — {ch.title}</span>
+                    <span className="text-[0.6rem] text-[#52525b]">{fmtNum(ch.views)} views</span>
                   </button>
                 ))}
               </div>
@@ -436,61 +306,18 @@ export default function ReaderPage() {
         )}
       </div>
 
-      {/* ─── Panels / Reader ─────────────────────────────────── */}
       <div className={`max-w-[800px] mx-auto p-1.5 md:p-3 transition-opacity duration-200 ${panelFade ? 'opacity-0' : 'opacity-100'}`}>
-        {panels ? (
-          isHorizontal ? (
-            /* ── Horizontal (page-by-page) mode ── */
-            <div className="relative">
-              <img src={panels[hPage]} className="w-full rounded-lg" alt={`Page ${hPage + 1}`} />
-              {panels.length > 1 && (
-                <div className="flex items-center justify-center gap-3 mt-3">
-                  <button onClick={() => setHPage(p => Math.max(0, p - 1))} disabled={hPage === 0}
-                    className={`px-4 py-2 border rounded-xl text-sm cursor-pointer bg-transparent ${hPage === 0 ? 'border-[#27272a] text-[#3f3f46]' : 'border-[#3f3f46] text-[#a1a1aa] hover:border-[#a855f7]'}`}>◀ Prev</button>
-                  <span className="text-sm text-[#71717a]">{hPage + 1}/{panels.length}</span>
-                  <button onClick={() => setHPage(p => Math.min(panels.length - 1, p + 1))} disabled={hPage === panels.length - 1}
-                    className={`px-4 py-2 border rounded-xl text-sm cursor-pointer bg-transparent ${hPage === panels.length - 1 ? 'border-[#27272a] text-[#3f3f46]' : 'border-[#3f3f46] text-[#a1a1aa] hover:border-[#a855f7]'}`}>Next ▶</button>
-                  <button onClick={() => { setFullscreenPage(hPage); setShowFullscreen(true) }}
-                    title="Full Screen"
-                    className="group relative w-[40px] h-[38px] border border-[#3f3f46] rounded-xl bg-transparent text-[#a1a1aa] cursor-pointer hover:border-[#a855f7] flex items-center justify-center">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/>
-                      <line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/>
-                    </svg>
-                    <span className="absolute -top-8 left-1/2 -translate-x-1/2 px-2 py-1 bg-[#27272a] border border-[#3f3f46] rounded text-[0.65rem] text-[#e4e4e7] whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">Full Screen</span>
-                  </button>
-                </div>
-              )}
-            </div>
-          ) : (
-            /* ── Webtoon (vertical scroll) mode ── */
-            panels.map((url: string, pi: number) => (
-              <img key={pi} src={url} className="w-full" style={{ marginTop: pi > 0 ? '-4px' : '0' }} alt={`Page ${pi+1}`} />
-            ))
-          )
-        ) : <div className="w-full aspect-[3/4] flex items-center justify-center text-[#52525b] text-sm bg-[#18181b] rounded-xl">{maxCh === 0 ? 'No chapters yet' : 'No pages in this chapter'}</div>}
+        {panels ? panels.map((url: string, pi: number) => (
+          <img key={pi} src={url} className="w-full" style={{ marginTop: pi > 0 ? '-4px' : '0' }} alt={`Page ${pi+1}`} />
+        )) : <div className="w-full aspect-[3/4] flex items-center justify-center text-[#52525b] text-sm bg-[#18181b] rounded-xl">{maxCh === 0 ? 'No chapters yet' : 'No pages in this chapter'}</div>}
       </div>
 
-      {/* ─── Chapter nav + Fullscreen button ──────────────────── */}
       {maxCh > 0 && (
         <div className="max-w-[800px] mx-auto mt-4 flex gap-2 px-3">
           <button onClick={() => { if (currentCh > 1) switchChapter(currentCh - 1); else show('First chapter!') }}
             className="flex-1 py-2.5 border border-[#3f3f46] rounded-xl bg-transparent text-[#a1a1aa] cursor-pointer text-sm hover:border-[#a855f7] flex items-center justify-center gap-1">Prev</button>
           <button onClick={() => { if (currentCh < maxCh) switchChapter(currentCh + 1); else show("You're caught up!") }}
             className="flex-1 py-2.5 border border-[#3f3f46] rounded-xl bg-transparent text-[#a1a1aa] cursor-pointer text-sm hover:border-[#a855f7] flex items-center justify-center gap-1">Next</button>
-          {!isHorizontal && panels && (
-            <button onClick={() => { setFullscreenPage(0); setShowFullscreen(true) }}
-              title="Full Screen"
-              className="group relative w-[44px] shrink-0 py-2.5 border border-[#3f3f46] rounded-xl bg-transparent text-[#a1a1aa] cursor-pointer hover:border-[#a855f7] flex items-center justify-center">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <polyline points="15 3 21 3 21 9"/>
-                <polyline points="9 21 3 21 3 15"/>
-                <line x1="21" y1="3" x2="14" y2="10"/>
-                <line x1="3" y1="21" x2="10" y2="14"/>
-              </svg>
-              <span className="absolute -top-8 left-1/2 -translate-x-1/2 px-2 py-1 bg-[#27272a] border border-[#3f3f46] rounded text-[0.65rem] text-[#e4e4e7] whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">Full Screen</span>
-            </button>
-          )}
         </div>
       )}
 
@@ -523,41 +350,6 @@ export default function ReaderPage() {
                 className="w-full bg-[#27272a] border border-[#3f3f46] rounded-lg p-2.5 h-16 text-[#e4e4e7] text-sm resize-y outline-none focus:border-[#a855f7] font-[inherit]" />
               <button onClick={() => postComment(true)} className="mt-2 px-4 py-2 bg-[#7c3aed] text-white rounded-xl cursor-pointer text-sm font-medium border-none hover:bg-[#6d28d9]">Post</button>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* ─── Fullscreen overlay (horizontal mode) ────────────── */}
-      {showFullscreen && panels && (
-        <div className="fixed inset-0 bg-black z-[300] flex flex-col"
-          onTouchStart={handleTouchStart}
-          onTouchEnd={(e) => handleTouchEnd(e, panels.length)}>
-          <div className="flex items-center justify-between p-3 shrink-0">
-            <span className="text-[#71717a] text-xs md:text-sm">{fullscreenPage + 1} / {panels.length}</span>
-            <button onClick={() => setShowFullscreen(false)} className="w-8 h-8 md:w-9 md:h-9 flex items-center justify-center bg-[#27272a] border border-[#3f3f46] rounded-lg text-[#a1a1aa] cursor-pointer hover:border-[#a855f7]">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-            </button>
-          </div>
-          <div className="flex-1 flex items-center justify-center overflow-hidden px-2 relative">
-            {fullscreenPage > 0 && (
-              <button onClick={() => setFullscreenPage(p => p - 1)}
-                className="absolute left-2 md:left-4 top-1/2 -translate-y-1/2 w-10 h-10 md:w-12 md:h-12 flex items-center justify-center bg-black/50 hover:bg-black/70 border border-[#3f3f46] rounded-full text-white cursor-pointer z-10 transition-colors">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="15 18 9 12 15 6"/></svg>
-              </button>
-            )}
-            <img src={panels[fullscreenPage]} className="max-h-full max-w-full object-contain select-none" alt={`Page ${fullscreenPage + 1}`} draggable={false} />
-            {fullscreenPage < panels.length - 1 && (
-              <button onClick={() => setFullscreenPage(p => p + 1)}
-                className="absolute right-2 md:right-4 top-1/2 -translate-y-1/2 w-10 h-10 md:w-12 md:h-12 flex items-center justify-center bg-black/50 hover:bg-black/70 border border-[#3f3f46] rounded-full text-white cursor-pointer z-10 transition-colors">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="9 18 15 12 9 6"/></svg>
-              </button>
-            )}
-          </div>
-          <div className="flex items-center justify-center gap-1.5 p-3 shrink-0">
-            {panels.length <= 20 && panels.map((_: any, i: number) => (
-              <button key={i} onClick={() => setFullscreenPage(i)}
-                className={`w-2 h-2 rounded-full border-none cursor-pointer transition-colors ${i === fullscreenPage ? 'bg-[#a855f7]' : 'bg-[#3f3f46] hover:bg-[#52525b]'}`} />
-            ))}
           </div>
         </div>
       )}

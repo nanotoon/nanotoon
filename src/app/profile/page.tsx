@@ -2,7 +2,6 @@
 import { LoadingSpinner } from '@/components/LoadingSpinner'
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { SeriesCard } from '@/components/SeriesCard'
-import { GalleryCard } from '@/components/GalleryCard'
 import { Avatar } from '@/components/Avatar'
 import { ShareModal } from '@/components/ShareModal'
 import { useToast } from '@/components/Toast'
@@ -20,7 +19,6 @@ export default function ProfilePage() {
   const anonDb = useMemo(() => createAnonClient(), [])
   const [showShare, setShowShare] = useState(false)
   const [mySeries, setMySeries] = useState<any[]>([])
-  const [myGallery, setMyGallery] = useState<any[]>([])
   const [followerCount, setFollowerCount] = useState(0)
   const [followingCount, setFollowingCount] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -31,24 +29,15 @@ export default function ProfilePage() {
     if (!user) { setLoading(false); return }
     const timeout = setTimeout(() => { if (!c) setLoading(false) }, 8000)
     let c = false
-    // FIX: was [user, supabase] but all reads use anonDb — correct dep is anonDb
-    // Also added gallery fetch — profile was only loading series before
     Promise.all([
       anonDb.from('series').select('*').eq('author_id', user.id).order('created_at', { ascending: false }),
-      anonDb.from('gallery').select('*').eq('author_id', user.id).order('created_at', { ascending: false }),
       anonDb.from('follows').select('*', { count: 'exact', head: true }).eq('following_id', user.id),
       anonDb.from('follows').select('*', { count: 'exact', head: true }).eq('follower_id', user.id),
-    ]).then(([s, g, fr, fg]: any) => {
-      if (!c) {
-        setMySeries(s.data ?? [])
-        setMyGallery(g.data ?? [])
-        setFollowerCount(fr.count ?? 0)
-        setFollowingCount(fg.count ?? 0)
-        setLoading(false)
-      }
+    ]).then(([s, fr, fg]: any) => {
+      if (!c) { setMySeries(s.data ?? []); setFollowerCount(fr.count ?? 0); setFollowingCount(fg.count ?? 0); setLoading(false) }
     })
     return () => { c = true; clearTimeout(timeout) }
-  }, [user, anonDb]) // FIX: was [user, supabase]
+  }, [user, supabase])
 
   async function handlePfp(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0]; if (!f || !user) return
@@ -68,19 +57,8 @@ export default function ProfilePage() {
 
   async function delSeries(id: string) {
     if (!confirm('Delete this series?')) return
-    // FIX: added error handling — was silently failing without surfacing the error
-    const { error } = await supabase.from('series').delete().eq('id', id)
-    if (error) { show('Failed to delete: ' + error.message); return }
-    setMySeries(prev => prev.filter(s => s.id !== id))
-    show('Series deleted')
-  }
-
-  async function delGallery(id: string) {
-    if (!confirm('Delete this gallery item?')) return
-    const { error } = await supabase.from('gallery').delete().eq('id', id)
-    if (error) { show('Failed to delete: ' + error.message); return }
-    setMyGallery(prev => prev.filter(g => g.id !== id))
-    show('Gallery item deleted')
+    await supabase.from('series').delete().eq('id', id)
+    setMySeries(prev => prev.filter(s => s.id !== id)); show('Series deleted')
   }
 
   const dn = profile?.display_name || 'User'; const h = profile?.handle || 'user'
@@ -119,13 +97,11 @@ export default function ProfilePage() {
           <div key={l} className="bg-[#18181b] rounded-2xl p-4 text-center"><div className="text-xl font-bold text-[#c084fc]">{n}</div><div className="text-[#71717a] text-xs mt-0.5">{l}</div></div>
         ))}
       </div>
-
-      {/* ─── My Series ─────────────────────────────────────── */}
       <h3 className="font-semibold mb-3 text-sm">My Series</h3>
       {loading ? <LoadingSpinner /> : mySeries.length === 0 ? (
-        <p className="text-[#71717a] text-sm mb-8">No series yet. Upload your first one!</p>
+        <p className="text-[#71717a] text-sm">No series yet. Upload your first one!</p>
       ) : (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {mySeries.map((s, i) => (
             <div key={s.id}>
               <SeriesCard title={s.title} slug={s.slug} author={dn} thumbnailUrl={s.thumbnail_url} latestChapter={0} rating="General" format={s.format} index={i} views={s.total_views} likes={s.total_likes} favorites={s.total_favorites} />
@@ -137,25 +113,6 @@ export default function ProfilePage() {
           ))}
         </div>
       )}
-
-      {/* ─── My Gallery ────────────────────────────────────── */}
-      <h3 className="font-semibold mb-3 text-sm">My Gallery</h3>
-      {loading ? null : myGallery.length === 0 ? (
-        <p className="text-[#71717a] text-sm">No gallery artworks yet. Upload some!</p>
-      ) : (
-        <div className="grid grid-cols-3 md:grid-cols-4 gap-3">
-          {myGallery.map((g, i) => (
-            <div key={g.id} className="relative group">
-              <GalleryCard item={g} index={i} />
-              <button
-                onClick={() => delGallery(g.id)}
-                className="absolute top-1.5 right-1.5 w-6 h-6 rounded-md bg-black/70 border border-red-500/40 text-[#f87171] text-xs cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center hover:bg-red-500/20"
-              >✕</button>
-            </div>
-          ))}
-        </div>
-      )}
-
       {showShare && <ShareModal title={`@${h} on NANOTOON`} url={`${typeof window !== 'undefined' ? window.location.origin : ''}/profile`} onClose={() => setShowShare(false)} />}
     </div>
   )

@@ -1,6 +1,6 @@
 'use client'
 import { LoadingSpinner } from '@/components/LoadingSpinner'
-import { useState, useEffect, useRef, useMemo } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { GENRES_ALL, GRADIENTS } from '@/data/mock'
@@ -15,8 +15,8 @@ export default function EditSeriesPage() {
   const { show } = useToast()
   const { user } = useAuth()
   const slug = params.slug as string
-  const supabase = useMemo(() => createClient(), [])
-  const anonDb = useMemo(() => createAnonClient(), [])
+  const supabase = createClient()
+  const anonDb = createAnonClient()
   const thumbRef = useRef<HTMLInputElement>(null)
 
   const [series, setSeries] = useState<any>(null)
@@ -24,7 +24,6 @@ export default function EditSeriesPage() {
   const [title, setTitle] = useState('')
   const [desc, setDesc] = useState('')
   const [format, setFormat] = useState('Series')
-  const [readingMode, setReadingMode] = useState<'webtoon' | 'horizontal'>('webtoon')
   const [genres, setGenres] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -55,7 +54,6 @@ export default function EditSeriesPage() {
       setTitle(s.title)
       setDesc(s.description || '')
       setFormat(s.format)
-      setReadingMode(s.reading_mode || 'webtoon')
       setGenres(new Set(s.genres || []))
       setThumbPreview(s.thumbnail_url)
       const { data: chs } = await anonDb.from('chapters').select('*').eq('series_id', s.id).order('chapter_number', { ascending: true }) as { data: any[] | null }
@@ -108,11 +106,11 @@ export default function EditSeriesPage() {
     }
     const { error } = await supabase.from('series').update({
       title, description: desc, format, genres: Array.from(genres),
-      thumbnail_url: thumbnailUrl, reading_mode: readingMode, updated_at: new Date().toISOString()
+      thumbnail_url: thumbnailUrl, updated_at: new Date().toISOString()
     }).eq('id', series.id)
     if (error) show('Save failed: ' + error.message)
     else {
-      setSeries((s: any) => ({ ...s, title, description: desc, format, genres: Array.from(genres), thumbnail_url: thumbnailUrl, reading_mode: readingMode }))
+      setSeries((s: any) => ({ ...s, title, description: desc, format, genres: Array.from(genres), thumbnail_url: thumbnailUrl }))
       setNewThumbFile(null)
       show('Changes saved!')
     }
@@ -304,13 +302,6 @@ export default function EditSeriesPage() {
           </div>
         </div>
         <div>
-          <label className="block text-xs text-[#71717a] mb-1.5">Reading Mode</label>
-          <div className="flex gap-1.5">
-            <button onClick={() => setReadingMode('webtoon')} className={`px-4 py-1.5 rounded-lg cursor-pointer text-xs font-medium border transition-all ${readingMode === 'webtoon' ? 'border-[#a855f7] text-[#c084fc] bg-purple-500/10' : 'border-[#3f3f46] text-[#71717a] bg-transparent hover:border-[#a855f7]'}`}>▼ Webtoon</button>
-            <button onClick={() => setReadingMode('horizontal')} className={`px-4 py-1.5 rounded-lg cursor-pointer text-xs font-medium border transition-all ${readingMode === 'horizontal' ? 'border-[#a855f7] text-[#c084fc] bg-purple-500/10' : 'border-[#3f3f46] text-[#71717a] bg-transparent hover:border-[#a855f7]'}`}>◀▶ Horizontal</button>
-          </div>
-        </div>
-        <div>
           <label className="block text-xs text-[#71717a] mb-1.5">Genres <span className="text-[#52525b]">(max 3)</span></label>
           <div className="flex gap-1 flex-wrap">
             {GENRES_ALL.map(g => (
@@ -320,9 +311,8 @@ export default function EditSeriesPage() {
           </div>
         </div>
         <div>
-          <label className="block text-xs text-[#71717a] mb-1">Description <span className="text-[#52525b]">(max 80 words)</span></label>
-          <textarea value={desc} onChange={e => { const words = e.target.value.trim().split(/\s+/).filter(Boolean); if (words.length <= 80) setDesc(e.target.value); else setDesc(words.slice(0,80).join(' ')) }} rows={3} className="w-full bg-[#27272a] border border-[#3f3f46] rounded-lg p-2 text-[#e4e4e7] outline-none text-sm resize-y font-[inherit] focus:border-[#a855f7]" />
-          <div className="text-right text-[0.65rem] text-[#52525b] mt-0.5">{desc.trim().split(/\s+/).filter(Boolean).length}/80 words</div>
+          <label className="block text-xs text-[#71717a] mb-1">Description</label>
+          <textarea value={desc} onChange={e => setDesc(e.target.value)} rows={3} className="w-full bg-[#27272a] border border-[#3f3f46] rounded-lg p-2 text-[#e4e4e7] outline-none text-sm resize-y font-[inherit] focus:border-[#a855f7]" />
         </div>
       </div>
 
