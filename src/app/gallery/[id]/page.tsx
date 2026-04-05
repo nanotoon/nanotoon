@@ -142,67 +142,123 @@ export default function GalleryDetailPage() {
     <div className="min-h-screen bg-black">
       {/* ─── HEADER / FLOAT MENU ─────────────────────────────── */}
       <div className="bg-[#09090b]/95 backdrop-blur border-b border-[#27272a] sticky top-0 z-20">
-        <div className="flex gap-2 md:gap-3 items-start p-3 md:p-4">
+
+        {/* ══ DESKTOP LAYOUT (md and above) ══════════════════════ */}
+        <div className="hidden md:flex gap-3 items-start p-4">
           {/* Back button */}
-          <Link href="/gallery" className="shrink-0 w-8 h-8 md:w-10 md:h-10 flex items-center justify-center bg-[#18181b] border border-[#3f3f46] rounded-lg text-[#a1a1aa] no-underline">
-            <svg className="w-3 h-3 md:w-4 md:h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+          <Link href="/gallery" className="shrink-0 w-10 h-10 flex items-center justify-center bg-[#18181b] border border-[#3f3f46] rounded-lg text-[#a1a1aa] no-underline">
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="15 18 9 12 15 6"/></svg>
           </Link>
 
-          {/* Thumbnail — album only (first image as thumbnail), not for single images */}
+          {/* Thumbnail — album only, enlarged */}
           {isAlbum && imgs[0] && (
-            <img src={imgs[0]} className="w-[48px] h-[68px] md:w-[86px] md:h-[120px] rounded-lg shrink-0 object-cover" />
+            <img src={imgs[0]} className="w-[110px] h-[155px] rounded-lg shrink-0 object-cover" />
           )}
 
-          {/* Gallery info */}
+          {/* Gallery info — enlarged */}
           <div className="flex-1 min-w-0">
-            <div className="font-bold text-sm md:text-xl leading-tight">{item.title}</div>
-            <div className="text-[#c084fc] text-xs md:text-sm mt-0.5">by {item.profiles?.display_name||'Unknown'}</div>
-            {item.description && <div className="text-xs md:text-sm text-[#a1a1aa] mt-1 line-clamp-2">{item.description}</div>}
-            <div className="flex items-center gap-3 mt-1.5 md:mt-2 flex-wrap">
-              <span className="flex items-center gap-1 text-[0.68rem] md:text-sm text-[#71717a]">
-                <svg className="w-[10px] h-[10px] md:w-[14px] md:h-[14px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            <div className="font-bold text-2xl leading-tight">{item.title}</div>
+            <div className="text-[#c084fc] text-base mt-0.5">by {item.profiles?.display_name||'Unknown'}</div>
+            {item.description && <div className="text-base text-[#a1a1aa] mt-1 line-clamp-2">{item.description}</div>}
+            <div className="flex items-center gap-3 mt-2 flex-wrap">
+              <span className="flex items-center gap-1 text-base text-[#71717a]">
+                <svg className="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                 <span className="text-[#a1a1aa] font-medium">{fmtNum(item.total_views)}</span> Views
               </span>
-              <span className="flex items-center gap-1 text-[0.68rem] md:text-sm text-[#71717a]">
-                <svg className="w-[10px] h-[10px] md:w-[14px] md:h-[14px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+              <span className="flex items-center gap-1 text-base text-[#71717a]">
+                <svg className="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
                 <span className="text-[#a1a1aa] font-medium">{fmtNum(item.total_likes)}</span> Like
               </span>
               <button onClick={()=>setShowShare({title:item.title,url:(typeof window!=='undefined'?window.location.origin:'')+'/gallery/'+id})}
-                className="flex items-center gap-1 px-2 py-0.5 md:px-3 md:py-1 rounded-lg border border-[#3f3f46] cursor-pointer text-[0.68rem] md:text-sm text-[#a1a1aa] hover:border-[#a855f7] bg-transparent">
+                className="flex items-center gap-1 px-4 py-1.5 rounded-lg border border-[#3f3f46] cursor-pointer text-base text-[#a1a1aa] hover:border-[#a855f7] bg-transparent">
                 Share
               </button>
             </div>
           </div>
 
-          {/* ─── Right-side action buttons (scaled up on desktop, same as series) ── */}
-          <div className="flex flex-col gap-1.5 md:gap-2 shrink-0">
-            {/* Follow */}
-            <button onClick={toggleFollow} className={`flex items-center gap-1.5 md:gap-2 px-3 py-1.5 md:px-5 md:py-2.5 rounded-lg border cursor-pointer text-xs md:text-base font-medium transition-all ${isFollowing ? 'bg-purple-500/15 border-purple-500/40 text-[#c084fc]' : 'bg-[#7c3aed] border-[#7c3aed] text-white hover:bg-[#6d28d9]'}`}>
-              <svg className="w-[13px] h-[13px] md:w-[20px] md:h-[20px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
+          {/* Right-side action buttons — desktop size unchanged */}
+          <div className="flex flex-col gap-2 shrink-0">
+            <button onClick={toggleFollow} className={`flex items-center gap-2 px-5 py-2.5 rounded-lg border cursor-pointer text-base font-medium transition-all ${isFollowing ? 'bg-purple-500/15 border-purple-500/40 text-[#c084fc]' : 'bg-[#7c3aed] border-[#7c3aed] text-white hover:bg-[#6d28d9]'}`}>
+              <svg className="w-[20px] h-[20px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
               {isFollowing ? 'Following' : 'Follow'}
             </button>
-            {/* Favorite */}
-            <button onClick={toggleFavorite} className={`flex items-center gap-1 md:gap-2 px-2 py-1 md:px-4 md:py-2 rounded-lg border cursor-pointer text-xs md:text-sm transition-all ${favorited ? 'border-yellow-500/40 text-[#fbbf24]' : 'border-[#3f3f46] text-[#a1a1aa] hover:border-yellow-500/40'}`}>
-              <svg className="w-[10px] h-[10px] md:w-[16px] md:h-[16px]" viewBox="0 0 24 24" fill={favorited?'#fbbf24':'none'} stroke="currentColor" strokeWidth="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            <button onClick={toggleFavorite} className={`flex items-center gap-2 px-4 py-2 rounded-lg border cursor-pointer text-sm transition-all ${favorited ? 'border-yellow-500/40 text-[#fbbf24]' : 'border-[#3f3f46] text-[#a1a1aa] hover:border-yellow-500/40'}`}>
+              <svg className="w-[16px] h-[16px]" viewBox="0 0 24 24" fill={favorited?'#fbbf24':'none'} stroke="currentColor" strokeWidth="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
               {favorited ? 'Favorited' : 'Favorite'}
             </button>
-            {/* Comments */}
-            <button onClick={()=>setShowCommentsModal(true)} className="flex items-center gap-1 md:gap-2 px-2 py-1 md:px-4 md:py-2 rounded-lg border border-[#3f3f46] cursor-pointer text-xs md:text-sm text-[#c084fc] hover:border-[#a855f7]">
-              <svg className="w-[10px] h-[10px] md:w-[14px] md:h-[14px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            <button onClick={()=>setShowCommentsModal(true)} className="flex items-center gap-2 px-4 py-2 rounded-lg border border-[#3f3f46] cursor-pointer text-sm text-[#c084fc] hover:border-[#a855f7]">
+              <svg className="w-[14px] h-[14px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
               Comments
             </button>
-            {/* Edit / Delete — owner only */}
             {user && item.author_id === user.id && (<>
-              <button onClick={()=>{setEditTitle(item.title);setEditDesc(item.description||'');setEditing(true)}} className="flex items-center gap-1 md:gap-2 px-2 py-1 md:px-4 md:py-2 rounded-lg border border-[#3f3f46] cursor-pointer text-xs md:text-sm text-[#a1a1aa] hover:border-[#a855f7]">
-                <svg className="w-[10px] h-[10px] md:w-[14px] md:h-[14px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+              <button onClick={()=>{setEditTitle(item.title);setEditDesc(item.description||'');setEditing(true)}} className="flex items-center gap-2 px-4 py-2 rounded-lg border border-[#3f3f46] cursor-pointer text-sm text-[#a1a1aa] hover:border-[#a855f7]">
+                <svg className="w-[14px] h-[14px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                 Edit
               </button>
-              <button onClick={async()=>{if(!confirm('Delete this gallery item?'))return;await supabase.from('gallery').delete().eq('id',id);window.location.href='/gallery'}} className="flex items-center gap-1 md:gap-2 px-2 py-1 md:px-4 md:py-2 rounded-lg border border-red-500/30 cursor-pointer text-xs md:text-sm text-[#f87171] hover:bg-red-500/10">
+              <button onClick={async()=>{if(!confirm('Delete this gallery item?'))return;await supabase.from('gallery').delete().eq('id',id);window.location.href='/gallery'}} className="flex items-center gap-2 px-4 py-2 rounded-lg border border-red-500/30 cursor-pointer text-sm text-[#f87171] hover:bg-red-500/10">
                 Delete
               </button>
             </>)}
           </div>
         </div>
+
+        {/* ══ MOBILE LAYOUT ══════════════════════════════════════ */}
+        <div className="flex flex-col gap-2 p-3 md:hidden">
+          {/* Row 1: Thumbnail | Info | Action buttons (30% smaller) */}
+          <div className="flex gap-2 items-start">
+            {/* Thumbnail — album only, positioned at far left */}
+            {isAlbum && imgs[0] && (
+              <img src={imgs[0]} className="w-[48px] h-[68px] rounded-lg shrink-0 object-cover" />
+            )}
+
+            {/* Info: title, by author, description wraps naturally */}
+            <div className="flex-1 min-w-0">
+              <div className="font-bold text-sm leading-tight">{item.title}</div>
+              <div className="text-[#c084fc] text-xs mt-0.5">by {item.profiles?.display_name||'Unknown'}</div>
+              {item.description && <div className="text-xs text-[#a1a1aa] mt-1 break-words">{item.description}</div>}
+            </div>
+
+            {/* Action buttons — 30% smaller, follow pinned at top */}
+            <div className="flex flex-col gap-1 shrink-0">
+              <button onClick={toggleFollow} className={`flex items-center gap-1 px-2 py-1 rounded-lg border cursor-pointer text-[0.6rem] font-medium transition-all ${isFollowing ? 'bg-purple-500/15 border-purple-500/40 text-[#c084fc]' : 'bg-[#7c3aed] border-[#7c3aed] text-white hover:bg-[#6d28d9]'}`}>
+                <svg className="w-[9px] h-[9px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
+                {isFollowing ? 'Following' : 'Follow'}
+              </button>
+              <button onClick={toggleFavorite} className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded-lg border cursor-pointer text-[0.6rem] transition-all ${favorited ? 'border-yellow-500/40 text-[#fbbf24]' : 'border-[#3f3f46] text-[#a1a1aa] hover:border-yellow-500/40'}`}>
+                <svg className="w-[7px] h-[7px]" viewBox="0 0 24 24" fill={favorited?'#fbbf24':'none'} stroke="currentColor" strokeWidth="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                {favorited ? 'Favorited' : 'Favorite'}
+              </button>
+              <button onClick={()=>setShowCommentsModal(true)} className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-lg border border-[#3f3f46] cursor-pointer text-[0.6rem] text-[#c084fc] hover:border-[#a855f7]">
+                <svg className="w-[7px] h-[7px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                Comments
+              </button>
+              {user && item.author_id === user.id && (<>
+                <button onClick={()=>{setEditTitle(item.title);setEditDesc(item.description||'');setEditing(true)}} className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-lg border border-[#3f3f46] cursor-pointer text-[0.6rem] text-[#a1a1aa] hover:border-[#a855f7]">
+                  <svg className="w-[7px] h-[7px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                  Edit
+                </button>
+              </>)}
+            </div>
+          </div>
+
+          {/* Row 2: Back button + Views / Likes / Share */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <Link href="/gallery" className="shrink-0 w-8 h-8 flex items-center justify-center bg-[#18181b] border border-[#3f3f46] rounded-lg text-[#a1a1aa] no-underline">
+              <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+            </Link>
+            <span className="flex items-center gap-1 text-[0.68rem] text-[#71717a]">
+              <svg className="w-[10px] h-[10px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              <span className="text-[#a1a1aa] font-medium">{fmtNum(item.total_views)}</span> Views
+            </span>
+            <span className="flex items-center gap-1 text-[0.68rem] text-[#71717a]">
+              <svg className="w-[10px] h-[10px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+              <span className="text-[#a1a1aa] font-medium">{fmtNum(item.total_likes)}</span> Like
+            </span>
+            <button onClick={()=>setShowShare({title:item.title,url:(typeof window!=='undefined'?window.location.origin:'')+'/gallery/'+id})}
+              className="flex items-center gap-1 px-2 py-0.5 rounded-lg border border-[#3f3f46] cursor-pointer text-[0.68rem] text-[#a1a1aa] hover:border-[#a855f7] bg-transparent">
+              Share
+            </button>
+          </div>
       </div>
 
       {/* ─── Image viewer ───────────────────────────────────── */}
@@ -338,7 +394,7 @@ export default function GalleryDetailPage() {
             </div>
             <div className="flex flex-col gap-3">
               <div><label className="block text-xs text-[#71717a] mb-1">Title</label><input value={editTitle} onChange={e=>setEditTitle(e.target.value)} className="w-full bg-[#27272a] border border-[#3f3f46] rounded-lg p-2 text-[#e4e4e7] text-sm outline-none focus:border-[#a855f7]" /></div>
-              <div><label className="block text-xs text-[#71717a] mb-1">Description</label><textarea value={editDesc} onChange={e=>setEditDesc(e.target.value)} rows={3} className="w-full bg-[#27272a] border border-[#3f3f46] rounded-lg p-2 text-[#e4e4e7] text-sm outline-none resize-y font-[inherit] focus:border-[#a855f7]" /></div>
+              <div><label className="block text-xs text-[#71717a] mb-1">Description <span className="text-[#52525b]">(max 80 words)</span></label><textarea value={editDesc} onChange={e => { const words = e.target.value.trim().split(/\s+/).filter(Boolean); if (words.length <= 80) setEditDesc(e.target.value); else setEditDesc(words.slice(0,80).join(' ')) }} rows={3} className="w-full bg-[#27272a] border border-[#3f3f46] rounded-lg p-2 text-[#e4e4e7] text-sm outline-none resize-y font-[inherit] focus:border-[#a855f7]" /><div className="text-right text-[0.65rem] text-[#52525b] mt-0.5">{editDesc.trim().split(/\s+/).filter(Boolean).length}/80 words</div></div>
               <button onClick={async()=>{
                 const {error}=await supabase.from('gallery').update({title:editTitle.trim(),description:editDesc||null}).eq('id',id)
                 if(error){show('Failed: '+error.message);return}

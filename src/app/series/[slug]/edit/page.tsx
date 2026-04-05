@@ -311,8 +311,9 @@ export default function EditSeriesPage() {
           </div>
         </div>
         <div>
-          <label className="block text-xs text-[#71717a] mb-1">Description</label>
-          <textarea value={desc} onChange={e => setDesc(e.target.value)} rows={3} className="w-full bg-[#27272a] border border-[#3f3f46] rounded-lg p-2 text-[#e4e4e7] outline-none text-sm resize-y font-[inherit] focus:border-[#a855f7]" />
+          <label className="block text-xs text-[#71717a] mb-1">Description <span className="text-[#52525b]">(max 80 words)</span></label>
+          <textarea value={desc} onChange={e => { const words = e.target.value.trim().split(/\s+/).filter(Boolean); if (words.length <= 80) setDesc(e.target.value); else setDesc(words.slice(0,80).join(' ')) }} rows={3} className="w-full bg-[#27272a] border border-[#3f3f46] rounded-lg p-2 text-[#e4e4e7] outline-none text-sm resize-y font-[inherit] focus:border-[#a855f7]" />
+          <div className="text-right text-[0.65rem] text-[#52525b] mt-0.5">{desc.trim().split(/\s+/).filter(Boolean).length}/80 words</div>
         </div>
       </div>
 
