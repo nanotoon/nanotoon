@@ -259,6 +259,7 @@ export default function GalleryDetailPage() {
               Share
             </button>
           </div>
+        </div>
       </div>
 
       {/* ─── Image viewer ───────────────────────────────────── */}
