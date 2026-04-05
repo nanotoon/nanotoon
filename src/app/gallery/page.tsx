@@ -25,26 +25,16 @@ export default function GalleryPage() {
         setLoading(true)
         setError(null)
 
-        // Try with profile join first (use explicit FK)
+        // Try with explicit FK join for author profile
         let result = await supabase
           .from('gallery')
           .select('*, profiles!gallery_author_id_fkey(display_name, handle, avatar_url)')
           .order('created_at', { ascending: false })
           .limit(limit)
 
-        // If explicit FK fails, try with implicit join
+        // If explicit FK join fails, fall back to query without the join
         if (result.error) {
-          console.warn('Gallery query with explicit FK failed, trying implicit:', result.error.message)
-          result = await supabase
-            .from('gallery')
-            .select('*, profiles!gallery_author_id_fkey(display_name, handle, avatar_url)')
-            .order('created_at', { ascending: false })
-            .limit(limit)
-        }
-
-        // If join still fails, try without the join
-        if (result.error) {
-          console.warn('Gallery query with join failed, trying without join:', result.error.message)
+          console.warn('Gallery query with explicit FK failed, falling back to no-join:', result.error.message)
           result = await supabase
             .from('gallery')
             .select('*')

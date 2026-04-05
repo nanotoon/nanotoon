@@ -1,6 +1,6 @@
 'use client'
 import { LoadingSpinner } from '@/components/LoadingSpinner'
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { GENRES_ALL, GRADIENTS } from '@/data/mock'
@@ -15,8 +15,8 @@ export default function EditSeriesPage() {
   const { show } = useToast()
   const { user } = useAuth()
   const slug = params.slug as string
-  const supabase = createClient()
-  const anonDb = createAnonClient()
+  const supabase = useMemo(() => createClient(), [])
+  const anonDb = useMemo(() => createAnonClient(), [])
   const thumbRef = useRef<HTMLInputElement>(null)
 
   const [series, setSeries] = useState<any>(null)
