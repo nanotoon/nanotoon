@@ -33,6 +33,7 @@ export default function GalleryDetailPage() {
   const [editing, setEditing] = useState(false)
   const [editTitle, setEditTitle] = useState('')
   const [editDesc, setEditDesc] = useState('')
+  const [likedComments, setLikedComments] = useState<Set<string>>(new Set())
 
   const touchStart = useRef<{ x: number; y: number } | null>(null)
 
@@ -49,12 +50,13 @@ export default function GalleryDetailPage() {
           const { data: cmts } = await anonDb.from('gallery_comments').select('*, profiles!gallery_comments_user_id_fkey(display_name, handle, avatar_url)').eq('gallery_id', id).order('created_at', { ascending: false }) as { data: any[] | null }
           if (!c) setComments(cmts ?? [])
           if (user) {
-            const [lk, fw, fv] = await Promise.all([
+            const [lk, fw, fv, cl] = await Promise.all([
               anonDb.from('gallery_likes').select('id').eq('user_id', user.id).eq('gallery_id', id).maybeSingle(),
               anonDb.from('follows').select('id').eq('follower_id', user.id).eq('following_id', data.author_id).maybeSingle(),
               anonDb.from('gallery_favorites').select('id').eq('user_id', user.id).eq('gallery_id', id).maybeSingle(),
+              supabase.from('comment_likes').select('comment_id').eq('user_id', user.id),
             ]) as any[]
-            if (!c) { setLiked(!!lk.data); setIsFollowing(!!fw.data); setFavorited(!!fv.data) }
+            if (!c) { setLiked(!!lk.data); setIsFollowing(!!fw.data); setFavorited(!!fv.data); setLikedComments(new Set((cl.data ?? []).map((x: any) => x.comment_id))) }
           }
         }
       } catch { /* swallow */ }
@@ -97,17 +99,26 @@ export default function GalleryDetailPage() {
 
   async function toggleLike() {
     if (!user||!item){show('Sign in!');return}
-    if (liked) { await supabase.from('gallery_likes').delete().eq('user_id',user.id).eq('gallery_id',id); setItem((p:any)=>({...p,total_likes:Math.max(0,(p.total_likes??1)-1)})); setLiked(false); show('Removed') }
-    else { await supabase.from('gallery_likes').insert({user_id:user.id,gallery_id:id}); setItem((p:any)=>({...p,total_likes:(p.total_likes??0)+1})); setLiked(true); show('Liked!') }
+    if (liked) {
+      const {error} = await supabase.from('gallery_likes').delete().eq('user_id',user.id).eq('gallery_id',id)
+      if (error){show('Error: '+error.message);return}
+      setItem((p:any)=>({...p,total_likes:Math.max(0,(p.total_likes??1)-1)})); setLiked(false); show('Removed')
+    } else {
+      const {error} = await supabase.from('gallery_likes').insert({user_id:user.id,gallery_id:id})
+      if (error){show('Error: '+error.message);return}
+      setItem((p:any)=>({...p,total_likes:(p.total_likes??0)+1})); setLiked(true); show('Liked!')
+    }
   }
 
   async function toggleFavorite() {
     if (!user||!item){show('Sign in!');return}
     if (favorited) {
-      await supabase.from('gallery_favorites').delete().eq('user_id',user.id).eq('gallery_id',id)
+      const {error} = await supabase.from('gallery_favorites').delete().eq('user_id',user.id).eq('gallery_id',id)
+      if (error){show('Error: '+error.message);return}
       setFavorited(false); show('Removed from Favorites')
     } else {
-      await supabase.from('gallery_favorites').insert({user_id:user.id,gallery_id:id})
+      const {error} = await supabase.from('gallery_favorites').insert({user_id:user.id,gallery_id:id})
+      if (error){show('Error: '+error.message);return}
       setFavorited(true); show('Added to Favorites!')
     }
   }
@@ -116,10 +127,12 @@ export default function GalleryDetailPage() {
     if (!user||!item){show('Sign in!');return}
     if (user.id === item.author_id){show("Can't follow yourself");return}
     if (isFollowing) {
-      await supabase.from('follows').delete().eq('follower_id',user.id).eq('following_id',item.author_id)
+      const {error} = await supabase.from('follows').delete().eq('follower_id',user.id).eq('following_id',item.author_id)
+      if (error){show('Error: '+error.message);return}
       setIsFollowing(false); show('Unfollowed')
     } else {
-      await supabase.from('follows').insert({follower_id:user.id,following_id:item.author_id})
+      const {error} = await supabase.from('follows').insert({follower_id:user.id,following_id:item.author_id})
+      if (error){show('Error: '+error.message);return}
       setIsFollowing(true); show('Following!')
     }
   }
@@ -129,6 +142,19 @@ export default function GalleryDetailPage() {
     const {data,error}=await supabase.from('gallery_comments').insert({user_id:user.id,gallery_id:id,body:cText.trim()}).select('*, profiles!gallery_comments_user_id_fkey(display_name, handle, avatar_url)').single()
     if (error){show('Failed: '+error.message);return}
     if (data){setComments(p=>[data,...p]);setCText('');show('Posted!')}
+  }
+
+  async function toggleCommentLike(commentId: string, currentCount: number) {
+    if (!user){show('Sign in to like!');return}
+    const isLiked = likedComments.has(commentId)
+    const newCount = isLiked ? Math.max(0, currentCount - 1) : currentCount + 1
+    setLikedComments(prev => { const n = new Set(prev); if (isLiked) n.delete(commentId); else n.add(commentId); return n })
+    setComments(prev => prev.map(x => x.id === commentId ? {...x, likes_count: newCount} : x))
+    if (isLiked) {
+      await supabase.from('comment_likes').delete().eq('user_id',user.id).eq('comment_id',commentId)
+    } else {
+      await supabase.from('comment_likes').insert({user_id:user.id,comment_id:commentId})
+    }
   }
 
   if (loading) return <div className="min-h-screen"><LoadingSpinner /></div>
@@ -312,7 +338,9 @@ export default function GalleryDetailPage() {
         {comments.map(c => <div key={c.id} className="flex gap-2 mb-3">
           {c.profiles?.avatar_url ? <img src={c.profiles.avatar_url} className="w-7 h-7 rounded-full object-cover shrink-0" /> : <Avatar name={c.profiles?.display_name||'User'} size={28} />}
           <div><div className="flex items-center gap-2"><span className="font-medium text-xs">{c.profiles?.display_name||'User'}</span>{c.created_at && <span className="text-[0.6rem] text-[#52525b]">{timeAgo(c.created_at)}</span>}</div>
-          <div className="text-[#d4d4d8] text-[0.79rem] mt-0.5">{c.body}</div></div>
+          <div className="text-[#d4d4d8] text-[0.79rem] mt-0.5">{c.body}</div>
+          <button onClick={()=>toggleCommentLike(c.id, c.likes_count??0)} className={`text-[0.65rem] bg-transparent border-none cursor-pointer flex items-center gap-0.5 mt-1 ${likedComments.has(c.id)?'text-[#f87171]':'text-[#71717a] hover:text-[#f87171]'}`}>♥ {c.likes_count??0}</button>
+          </div>
         </div>)}
         <textarea value={cText} onChange={e=>setCText(e.target.value)} placeholder="Write a comment..." className="w-full bg-[#27272a] border border-[#3f3f46] rounded-lg p-2.5 h-16 text-[#e4e4e7] text-sm resize-y outline-none focus:border-[#a855f7] font-[inherit]" />
         <div className="flex justify-end mt-2"><button onClick={postComment} className="px-4 py-2 bg-[#7c3aed] text-white rounded-xl cursor-pointer text-sm font-medium border-none hover:bg-[#6d28d9]">Post</button></div>
@@ -331,7 +359,9 @@ export default function GalleryDetailPage() {
               {comments.map(c => <div key={c.id} className="flex gap-2 mb-3">
                 {c.profiles?.avatar_url ? <img src={c.profiles.avatar_url} className="w-7 h-7 rounded-full object-cover shrink-0" /> : <Avatar name={c.profiles?.display_name||'User'} size={28} />}
                 <div><div className="flex items-center gap-2"><span className="font-medium text-xs">{c.profiles?.display_name||'User'}</span>{c.created_at && <span className="text-[0.6rem] text-[#52525b]">{timeAgo(c.created_at)}</span>}</div>
-                <div className="text-[#d4d4d8] text-[0.79rem] mt-0.5">{c.body}</div></div>
+                <div className="text-[#d4d4d8] text-[0.79rem] mt-0.5">{c.body}</div>
+                <button onClick={()=>toggleCommentLike(c.id, c.likes_count??0)} className={`text-[0.65rem] bg-transparent border-none cursor-pointer flex items-center gap-0.5 mt-1 ${likedComments.has(c.id)?'text-[#f87171]':'text-[#71717a] hover:text-[#f87171]'}`}>♥ {c.likes_count??0}</button>
+                </div>
               </div>)}
             </div>
             <div className="p-3.5 border-t border-[#27272a] shrink-0">

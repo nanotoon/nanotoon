@@ -52,6 +52,7 @@ export default function ReaderPage() {
   const [editText, setEditText] = useState('')
   const [replyingTo, setReplyingTo] = useState<string | null>(null)
   const [replyText, setReplyText] = useState('')
+  const [likedComments, setLikedComments] = useState<Set<string>>(new Set())
 
   const touchStart = useRef<{ x: number; y: number } | null>(null)
 
@@ -70,12 +71,13 @@ export default function ReaderPage() {
         const { data: sc } = await anonDb.from('comments').select('*, profiles!comments_user_id_fkey(display_name, handle, avatar_url)').eq('series_id', s.id).is('chapter_id', null).order('created_at', { ascending: false }) as { data: any[] | null }
         if (!c) setSeriesComments(sc ?? [])
         if (user) {
-          const [lk, fv, fw] = await Promise.all([
+          const [lk, fv, fw, cl] = await Promise.all([
             supabase.from('likes').select('*').eq('user_id', user.id).eq('series_id', s.id).maybeSingle(),
             supabase.from('favorites').select('*').eq('user_id', user.id).eq('series_id', s.id).maybeSingle(),
             supabase.from('follows').select('*').eq('follower_id', user.id).eq('following_id', s.author_id).maybeSingle(),
+            supabase.from('comment_likes').select('comment_id').eq('user_id', user.id),
           ])
-          if (!c) { setLiked(!!lk.data); setFavorited(!!fv.data); setIsFollowing(!!fw.data) }
+          if (!c) { setLiked(!!lk.data); setFavorited(!!fv.data); setIsFollowing(!!fw.data); setLikedComments(new Set((cl.data ?? []).map((x: any) => x.comment_id))) }
         }
         if (!viewIncremented.current) {
           viewIncremented.current = true
@@ -137,11 +139,13 @@ export default function ReaderPage() {
   async function toggleLike() {
     if (!user || !series) { show('Sign in to like!'); return }
     if (liked) {
-      await supabase.from('likes').delete().eq('user_id', user.id).eq('series_id', series.id)
+      const { error } = await supabase.from('likes').delete().eq('user_id', user.id).eq('series_id', series.id)
+      if (error) { show('Error: ' + error.message); return }
       await supabase.from('series').update({ total_likes: Math.max(0, (series.total_likes ?? 1) - 1) }).eq('id', series.id)
       setSeries((s: any) => ({ ...s, total_likes: Math.max(0, (s.total_likes ?? 1) - 1) })); setLiked(false); show('Like removed')
     } else {
-      await supabase.from('likes').insert({ user_id: user.id, series_id: series.id })
+      const { error } = await supabase.from('likes').insert({ user_id: user.id, series_id: series.id })
+      if (error) { show('Error: ' + error.message); return }
       await supabase.from('series').update({ total_likes: (series.total_likes ?? 0) + 1 }).eq('id', series.id)
       setSeries((s: any) => ({ ...s, total_likes: (s.total_likes ?? 0) + 1 })); setLiked(true); show('Liked!')
     }
@@ -150,9 +154,13 @@ export default function ReaderPage() {
   async function toggleFav() {
     if (!user || !series) { show('Sign in to favorite!'); return }
     if (favorited) {
-      await supabase.from('favorites').delete().eq('user_id', user.id).eq('series_id', series.id); setFavorited(false); show('Removed from Favorites')
+      const { error } = await supabase.from('favorites').delete().eq('user_id', user.id).eq('series_id', series.id)
+      if (error) { show('Error: ' + error.message); return }
+      setFavorited(false); show('Removed from Favorites')
     } else {
-      await supabase.from('favorites').insert({ user_id: user.id, series_id: series.id }); setFavorited(true); show('Added to Favorites!')
+      const { error } = await supabase.from('favorites').insert({ user_id: user.id, series_id: series.id })
+      if (error) { show('Error: ' + error.message); return }
+      setFavorited(true); show('Added to Favorites!')
     }
   }
 
@@ -160,10 +168,12 @@ export default function ReaderPage() {
     if (!user || !series) { show('Sign in to follow!'); return }
     if (user.id === series.author_id) { show("Can't follow yourself"); return }
     if (isFollowing) {
-      await supabase.from('follows').delete().eq('follower_id', user.id).eq('following_id', series.author_id)
+      const { error } = await supabase.from('follows').delete().eq('follower_id', user.id).eq('following_id', series.author_id)
+      if (error) { show('Error: ' + error.message); return }
       setIsFollowing(false); show('Unfollowed')
     } else {
-      await supabase.from('follows').insert({ follower_id: user.id, following_id: series.author_id })
+      const { error } = await supabase.from('follows').insert({ follower_id: user.id, following_id: series.author_id })
+      if (error) { show('Error: ' + error.message); return }
       setIsFollowing(true); show('Following!')
     }
   }
@@ -204,6 +214,20 @@ export default function ReaderPage() {
     show('Comment deleted')
   }
 
+  async function toggleCommentLike(commentId: string, currentCount: number) {
+    if (!user) { show('Sign in to like!'); return }
+    const isLiked = likedComments.has(commentId)
+    const newCount = isLiked ? Math.max(0, currentCount - 1) : currentCount + 1
+    setLikedComments(prev => { const n = new Set(prev); if (isLiked) n.delete(commentId); else n.add(commentId); return n })
+    const updater = (prev: any[]) => prev.map(x => x.id === commentId ? { ...x, likes_count: newCount } : x)
+    setComments(updater); setSeriesComments(updater)
+    if (isLiked) {
+      await supabase.from('comment_likes').delete().eq('user_id', user.id).eq('comment_id', commentId)
+    } else {
+      await supabase.from('comment_likes').insert({ user_id: user.id, comment_id: commentId })
+    }
+  }
+
   function switchChapter(ch: number) {
     setPanelFade(true); setTimeout(() => { setCurrentCh(ch); setShowChapters(false); setPanelFade(false); show(`Chapter ${ch}`) }, 200)
   }
@@ -236,6 +260,10 @@ export default function ReaderPage() {
             <div className="flex gap-2.5 mt-1">
               <button onClick={() => { setReplyingTo(replyingTo === c.id ? null : c.id); setReplyText('') }}
                 className="text-[0.65rem] text-[#71717a] bg-transparent border-none cursor-pointer hover:text-[#c084fc]">Reply</button>
+              <button onClick={() => toggleCommentLike(c.id, c.likes_count ?? 0)}
+                className={`text-[0.65rem] bg-transparent border-none cursor-pointer flex items-center gap-0.5 ${likedComments.has(c.id) ? 'text-[#f87171]' : 'text-[#71717a] hover:text-[#f87171]'}`}>
+                ♥ {c.likes_count ?? 0}
+              </button>
               {isOwn && editingId !== c.id && (
                 <>
                   <button onClick={() => { setEditingId(c.id); setEditText(c.body) }}
