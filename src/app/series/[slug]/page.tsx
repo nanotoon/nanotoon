@@ -103,7 +103,7 @@ export default function ReaderPage() {
       setChapterViews(v => v + 1)
       setChapters(prev => prev.map(c => c.id === ch.id ? { ...c, views: (c.views ?? 0) + 1 } : c))
     })
-  }, [currentCh, series?.id, chapters.length, supabase])
+  }, [currentCh, series?.id, chapters.length, anonDb])
 
   // Fullscreen keyboard nav
   useEffect(() => {
