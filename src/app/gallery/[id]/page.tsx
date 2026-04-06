@@ -65,10 +65,10 @@ export default function GalleryDetailPage() {
         if (!cancelled && data) {
           setItem(data)
 
-          // ←←← THIS IS THE FIX (bypass strict typing)
+          // FIXED: This was causing the TypeScript error
           ;(anonDb as any)
             .from('gallery')
-            .update({ total_views: (data.total_views ?? 0) + 1 })
+            .update({ total_views: ((data as any)?.total_views ?? 0) + 1 })
             .eq('id', id)
             .then(() => {
               if (!cancelled) {
@@ -88,7 +88,7 @@ export default function GalleryDetailPage() {
           if (user) {
             const [lk, fw, fv, cl] = await Promise.all([
               anonDb.from('gallery_likes').select('id').eq('user_id', user.id).eq('gallery_id', id).maybeSingle(),
-              anonDb.from('follows').select('id').eq('follower_id', user.id).eq('following_id', data.author_id).maybeSingle(),
+              anonDb.from('follows').select('id').eq('follower_id', user.id).eq('following_id', (data as any).author_id).maybeSingle(),
               anonDb.from('gallery_favorites').select('id').eq('user_id', user.id).eq('gallery_id', id).maybeSingle(),
               supabase.from('comment_likes').select('comment_id').eq('user_id', user.id),
             ])
@@ -185,14 +185,14 @@ export default function GalleryDetailPage() {
 
   async function toggleFollow() {
     if (!user || !item) { show('Sign in!'); return }
-    if (user.id === item.author_id) { show("Can't follow yourself"); return }
+    if (user.id === (item as any).author_id) { show("Can't follow yourself"); return }
     if (isFollowing) {
-      const { error } = await supabase.from('follows').delete().eq('follower_id', user.id).eq('following_id', item.author_id)
+      const { error } = await supabase.from('follows').delete().eq('follower_id', user.id).eq('following_id', (item as any).author_id)
       if (error) { show('Error: ' + error.message); return }
       setIsFollowing(false)
       show('Unfollowed')
     } else {
-      const { error } = await supabase.from('follows').insert({ follower_id: user.id, following_id: item.author_id })
+      const { error } = await supabase.from('follows').insert({ follower_id: user.id, following_id: (item as any).author_id })
       if (error) { show('Error: ' + error.message); return }
       setIsFollowing(true)
       show('Following!')
@@ -247,10 +247,260 @@ export default function GalleryDetailPage() {
 
   return (
     <div className="min-h-screen bg-black">
-      {/* [Rest of your JSX is unchanged - I kept everything the same from here down] */}
-      {/* HEADER, IMAGE VIEWER, COMMENTS, MODALS, FULLSCREEN - all identical to what you had */}
+      {/* HEADER / FLOAT MENU - unchanged from your original */}
+      <div className="bg-[#09090b]/95 backdrop-blur border-b border-[#27272a] sticky top-0 z-20">
+        {/* Desktop Layout */}
+        <div className="hidden md:flex gap-3 items-start p-4">
+          <Link href="/gallery" className="shrink-0 w-10 h-10 flex items-center justify-center bg-[#18181b] border border-[#3f3f46] rounded-lg text-[#a1a1aa] no-underline">
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+          </Link>
 
-      {/* ... (the rest of the return statement is exactly the same as your original file) ... */}
+          {isAlbum && imgs[0] && <img src={imgs[0]} className="w-[110px] h-[155px] rounded-lg shrink-0 object-cover" />}
+
+          <div className="flex-1 min-w-0">
+            <div className="font-bold text-2xl leading-tight">{item.title}</div>
+            <div className="text-[#c084fc] text-base mt-0.5">by {item.profiles?.display_name || 'Unknown'}</div>
+            {item.description && <div className="text-base text-[#a1a1aa] mt-1 line-clamp-2">{item.description}</div>}
+            <div className="flex items-center gap-3 mt-2 flex-wrap">
+              <span className="flex items-center gap-1 text-base text-[#71717a]">
+                <svg className="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                <span className="text-[#a1a1aa] font-medium">{fmtNum(item.total_views)}</span> Views
+              </span>
+              <button onClick={toggleLike} className={`flex items-center gap-1 text-base cursor-pointer bg-transparent border-none ${liked ? 'text-[#f87171]' : 'text-[#71717a]'}`}>
+                <svg className="w-[18px] h-[18px]" viewBox="0 0 24 24" fill={liked ? '#f87171' : 'none'} stroke="currentColor" strokeWidth="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+                <span className="font-medium">{fmtNum(item.total_likes)}</span> Like
+              </button>
+              <button onClick={() => setShowShare({ title: item.title, url: (typeof window !== 'undefined' ? window.location.origin : '') + '/gallery/' + id })}
+                className="flex items-center gap-1 px-4 py-1.5 rounded-lg border border-[#3f3f46] cursor-pointer text-base text-[#a1a1aa] hover:border-[#a855f7] bg-transparent">
+                Share
+              </button>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-2 shrink-0">
+            <button onClick={toggleFollow} className={`flex items-center gap-2 px-5 py-2.5 rounded-lg border cursor-pointer text-base font-medium transition-all ${isFollowing ? 'bg-purple-500/15 border-purple-500/40 text-[#c084fc]' : 'bg-[#7c3aed] border-[#7c3aed] text-white hover:bg-[#6d28d9]'}`}>
+              <svg className="w-[20px] h-[20px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
+              {isFollowing ? 'Following' : 'Follow'}
+            </button>
+            <button onClick={toggleFavorite} className={`flex items-center gap-2 px-4 py-2 rounded-lg border cursor-pointer text-sm transition-all ${favorited ? 'border-yellow-500/40 text-[#fbbf24]' : 'border-[#3f3f46] text-[#a1a1aa] hover:border-yellow-500/40'}`}>
+              <svg className="w-[16px] h-[16px]" viewBox="0 0 24 24" fill={favorited ? '#fbbf24' : 'none'} stroke="currentColor" strokeWidth="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+              {favorited ? 'Favorited' : 'Favorite'}
+            </button>
+            <button onClick={() => setShowCommentsModal(true)} className="flex items-center gap-2 px-4 py-2 rounded-lg border border-[#3f3f46] cursor-pointer text-sm text-[#c084fc] hover:border-[#a855f7]">
+              <svg className="w-[14px] h-[14px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+              Comments
+            </button>
+            {user && (item as any).author_id === user.id && (
+              <>
+                <Link href={`/gallery/${id}/edit`} className="flex items-center gap-2 px-4 py-2 rounded-lg border border-[#3f3f46] cursor-pointer text-sm text-[#a1a1aa] hover:border-[#a855f7] no-underline">
+                  <svg className="w-[14px] h-[14px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                  Edit
+                </Link>
+                <button onClick={async () => { if (!confirm('Delete this gallery item?')) return; await supabase.from('gallery').delete().eq('id', id); window.location.href = '/gallery' }}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg border border-red-500/30 cursor-pointer text-sm text-[#f87171] hover:bg-red-500/10">
+                  Delete
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Mobile Layout */}
+        <div className="flex flex-col gap-2 p-3 md:hidden">
+          <div className="flex gap-2 items-start">
+            {isAlbum && imgs[0] && <img src={imgs[0]} className="w-[48px] h-[68px] rounded-lg shrink-0 object-cover" />}
+            <div className="flex-1 min-w-0">
+              <div className="font-bold text-sm leading-tight">{item.title}</div>
+              <div className="text-[#c084fc] text-xs mt-0.5">by {item.profiles?.display_name || 'Unknown'}</div>
+              {item.description && <div className="text-xs text-[#a1a1aa] mt-1 break-words">{item.description}</div>}
+            </div>
+            <div className="flex flex-col gap-1 shrink-0">
+              <button onClick={toggleFollow} className={`flex items-center gap-1 px-2 py-1 rounded-lg border cursor-pointer text-[0.6rem] font-medium transition-all ${isFollowing ? 'bg-purple-500/15 border-purple-500/40 text-[#c084fc]' : 'bg-[#7c3aed] border-[#7c3aed] text-white hover:bg-[#6d28d9]'}`}>
+                <svg className="w-[9px] h-[9px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
+                {isFollowing ? 'Following' : 'Follow'}
+              </button>
+              <button onClick={toggleFavorite} className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded-lg border cursor-pointer text-[0.6rem] transition-all ${favorited ? 'border-yellow-500/40 text-[#fbbf24]' : 'border-[#3f3f46] text-[#a1a1aa] hover:border-yellow-500/40'}`}>
+                <svg className="w-[7px] h-[7px]" viewBox="0 0 24 24" fill={favorited ? '#fbbf24' : 'none'} stroke="currentColor" strokeWidth="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                {favorited ? 'Favorited' : 'Favorite'}
+              </button>
+              <button onClick={() => setShowCommentsModal(true)} className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-lg border border-[#3f3f46] cursor-pointer text-[0.6rem] text-[#c084fc] hover:border-[#a855f7]">
+                <svg className="w-[7px] h-[7px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                Comments
+              </button>
+              {user && (item as any).author_id === user.id && (
+                <Link href={`/gallery/${id}/edit`} className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-lg border border-[#3f3f46] cursor-pointer text-[0.6rem] text-[#a1a1aa] hover:border-[#a855f7] no-underline">
+                  <svg className="w-[7px] h-[7px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                  Edit
+                </Link>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <Link href="/gallery" className="shrink-0 w-8 h-8 flex items-center justify-center bg-[#18181b] border border-[#3f3f46] rounded-lg text-[#a1a1aa] no-underline">
+              <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+            </Link>
+            <span className="flex items-center gap-1 text-[0.68rem] text-[#71717a]">
+              <svg className="w-[10px] h-[10px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              <span className="text-[#a1a1aa] font-medium">{fmtNum(item.total_views)}</span> Views
+            </span>
+            <button onClick={toggleLike} className={`flex items-center gap-1 text-[0.68rem] cursor-pointer bg-transparent border-none ${liked ? 'text-[#f87171]' : 'text-[#71717a]'}`}>
+              <svg className="w-[10px] h-[10px]" viewBox="0 0 24 24" fill={liked ? '#f87171' : 'none'} stroke="currentColor" strokeWidth="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+              <span className="font-medium">{fmtNum(item.total_likes)}</span> Like
+            </button>
+            <button onClick={() => setShowShare({ title: item.title, url: (typeof window !== 'undefined' ? window.location.origin : '') + '/gallery/' + id })}
+              className="flex items-center gap-1 px-2 py-0.5 rounded-lg border border-[#3f3f46] cursor-pointer text-[0.68rem] text-[#a1a1aa] hover:border-[#a855f7] bg-transparent">
+              Share
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Image viewer */}
+      <div className="max-w-[800px] mx-auto p-1.5 md:p-3">
+        {rm === 'webtoon' ? imgs.map((url: string, i: number) => (
+          <img key={i} src={url} className="w-full" style={{ marginTop: i > 0 ? '-4px' : '0' }} alt="" />
+        )) : (
+          <div className="relative">
+            {imgs.length > 0 && <img src={imgs[page]} className="w-full rounded-lg" alt="" />}
+            {imgs.length > 1 && (
+              <div className="flex items-center justify-center gap-3 mt-3">
+                <button onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0}
+                  className={`px-4 py-2 border rounded-xl text-sm cursor-pointer bg-transparent ${page === 0 ? 'border-[#27272a] text-[#3f3f46]' : 'border-[#3f3f46] text-[#a1a1aa] hover:border-[#a855f7]'}`}>◀ Prev</button>
+                <span className="text-sm text-[#71717a]">{page + 1}/{imgs.length}</span>
+                <button onClick={() => setPage(p => Math.min(imgs.length - 1, p + 1))} disabled={page === imgs.length - 1}
+                  className={`px-4 py-2 border rounded-xl text-sm cursor-pointer bg-transparent ${page === imgs.length - 1 ? 'border-[#27272a] text-[#3f3f46]' : 'border-[#3f3f46] text-[#a1a1aa] hover:border-[#a855f7]'}`}>Next ▶</button>
+                <button onClick={() => { setFullscreenPage(page); setShowFullscreen(true) }}
+                  title="Full Screen"
+                  className="group relative w-[40px] h-[38px] border border-[#3f3f46] rounded-xl bg-transparent text-[#a1a1aa] cursor-pointer hover:border-[#a855f7] flex items-center justify-center">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <polyline points="15 3 21 3 21 9"/>
+                    <polyline points="9 21 3 21 3 15"/>
+                    <line x1="21" y1="3" x2="14" y2="10"/>
+                    <line x1="3" y1="21" x2="10" y2="14"/>
+                  </svg>
+                </button>
+              </div>
+            )}
+            {isSingleImage && imgs[0] && (
+              <div className="flex justify-center mt-3">
+                <button onClick={() => { setFullscreenPage(0); setShowFullscreen(true) }}
+                  title="Full Screen"
+                  className="group relative w-[40px] h-[38px] border border-[#3f3f46] rounded-xl bg-transparent text-[#a1a1aa] cursor-pointer hover:border-[#a855f7] flex items-center justify-center">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <polyline points="15 3 21 3 21 9"/>
+                    <polyline points="9 21 3 21 3 15"/>
+                    <line x1="21" y1="3" x2="14" y2="10"/>
+                    <line x1="3" y1="21" x2="10" y2="14"/>
+                  </svg>
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Comments Section */}
+      <div className="max-w-[800px] mx-auto mt-7 bg-[#18181b] rounded-2xl p-4 mb-8 mx-3">
+        <h3 className="font-medium text-sm mb-3">Comments ({comments.length})</h3>
+        {comments.length === 0 && <p className="text-[#52525b] text-xs mb-3">No comments yet.</p>}
+        {comments.map(c => (
+          <div key={c.id} className="flex gap-2 mb-3">
+            {c.profiles?.avatar_url ? <img src={c.profiles.avatar_url} className="w-7 h-7 rounded-full object-cover shrink-0" alt="" /> : <Avatar name={c.profiles?.display_name || 'User'} size={28} />}
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="font-medium text-xs">{c.profiles?.display_name || 'User'}</span>
+                {c.created_at && <span className="text-[0.6rem] text-[#52525b]">{timeAgo(c.created_at)}</span>}
+              </div>
+              <div className="text-[#d4d4d8] text-[0.79rem] mt-0.5">{c.body}</div>
+              <button onClick={() => toggleCommentLike(c.id, c.likes_count ?? 0)}
+                className={`text-[0.65rem] bg-transparent border-none cursor-pointer flex items-center gap-0.5 mt-1 ${likedComments.has(c.id) ? 'text-[#f87171]' : 'text-[#71717a] hover:text-[#f87171]'}`}>
+                ♥ {c.likes_count ?? 0}
+              </button>
+            </div>
+          </div>
+        ))}
+        <textarea value={cText} onChange={e => setCText(e.target.value)} placeholder="Write a comment..."
+          className="w-full bg-[#27272a] border border-[#3f3f46] rounded-lg p-2.5 h-16 text-[#e4e4e7] text-sm resize-y outline-none focus:border-[#a855f7] font-[inherit]" />
+        <div className="flex justify-end mt-2">
+          <button onClick={postComment} className="px-4 py-2 bg-[#7c3aed] text-white rounded-xl cursor-pointer text-sm font-medium border-none hover:bg-[#6d28d9]">
+            Post
+          </button>
+        </div>
+      </div>
+
+      {/* Comments Modal */}
+      {showCommentsModal && (
+        <div className="fixed inset-0 bg-black/90 z-[110] flex items-center justify-center" onClick={() => setShowCommentsModal(false)}>
+          <div className="bg-[#18181b] rounded-2xl w-full max-w-[520px] mx-3.5 max-h-[84vh] overflow-hidden flex flex-col border border-[#27272a]" onClick={e => e.stopPropagation()}>
+            <div className="p-3.5 border-b border-[#27272a] flex justify-between items-center shrink-0">
+              <h3 className="font-semibold text-sm">Comments ({comments.length})</h3>
+              <button onClick={() => setShowCommentsModal(false)} className="bg-[#27272a] border-none w-6 h-6 rounded-md cursor-pointer text-[#a1a1aa] text-base flex items-center justify-center">×</button>
+            </div>
+            <div className="p-3.5 overflow-y-auto flex-1">
+              {comments.length === 0 && <p className="text-[#52525b] text-xs">No comments yet.</p>}
+              {comments.map(c => (
+                <div key={c.id} className="flex gap-2 mb-3">
+                  {c.profiles?.avatar_url ? <img src={c.profiles.avatar_url} className="w-7 h-7 rounded-full object-cover shrink-0" alt="" /> : <Avatar name={c.profiles?.display_name || 'User'} size={28} />}
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-xs">{c.profiles?.display_name || 'User'}</span>
+                      {c.created_at && <span className="text-[0.6rem] text-[#52525b]">{timeAgo(c.created_at)}</span>}
+                    </div>
+                    <div className="text-[#d4d4d8] text-[0.79rem] mt-0.5">{c.body}</div>
+                    <button onClick={() => toggleCommentLike(c.id, c.likes_count ?? 0)}
+                      className={`text-[0.65rem] bg-transparent border-none cursor-pointer flex items-center gap-0.5 mt-1 ${likedComments.has(c.id) ? 'text-[#f87171]' : 'text-[#71717a] hover:text-[#f87171]'}`}>
+                      ♥ {c.likes_count ?? 0}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="p-3.5 border-t border-[#27272a] shrink-0">
+              <textarea value={cText} onChange={e => setCText(e.target.value)} placeholder="Write a comment..."
+                className="w-full bg-[#27272a] border border-[#3f3f46] rounded-lg p-2.5 h-14 text-[#e4e4e7] text-sm resize-y outline-none focus:border-[#a855f7] font-[inherit]" />
+              <button onClick={postComment} className="mt-2 px-4 py-2 bg-[#7c3aed] text-white rounded-xl cursor-pointer text-sm font-medium border-none hover:bg-[#6d28d9]">
+                Post
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Fullscreen Overlay */}
+      {showFullscreen && imgs.length > 0 && (
+        <div className="fixed inset-0 bg-black z-[300] flex flex-col"
+          onTouchStart={handleTouchStart}
+          onTouchEnd={(e) => handleTouchEnd(e, imgs.length)}>
+          <div className="flex items-center justify-between p-3 shrink-0">
+            {imgs.length > 1 ? <span className="text-[#71717a] text-xs md:text-sm">{fullscreenPage + 1} / {imgs.length}</span> : <span />}
+            <button onClick={() => setShowFullscreen(false)} className="w-8 h-8 md:w-9 md:h-9 flex items-center justify-center bg-[#27272a] border border-[#3f3f46] rounded-lg text-[#a1a1aa] cursor-pointer hover:border-[#a855f7]">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+          <div className="flex-1 flex items-center justify-center overflow-hidden px-2 relative">
+            {imgs.length > 1 && fullscreenPage > 0 && (
+              <button onClick={() => setFullscreenPage(p => p - 1)} className="absolute left-2 md:left-4 top-1/2 -translate-y-1/2 w-10 h-10 md:w-12 md:h-12 flex items-center justify-center bg-black/50 hover:bg-black/70 border border-[#3f3f46] rounded-full text-white cursor-pointer z-10 transition-colors">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+              </button>
+            )}
+            <img src={imgs[fullscreenPage]} className="max-h-full max-w-full object-contain select-none" alt={item.title} draggable={false} onClick={e => e.stopPropagation()} />
+            {imgs.length > 1 && fullscreenPage < imgs.length - 1 && (
+              <button onClick={() => setFullscreenPage(p => p + 1)} className="absolute right-2 md:right-4 top-1/2 -translate-y-1/2 w-10 h-10 md:w-12 md:h-12 flex items-center justify-center bg-black/50 hover:bg-black/70 border border-[#3f3f46] rounded-full text-white cursor-pointer z-10 transition-colors">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+              </button>
+            )}
+          </div>
+          {imgs.length > 1 && (
+            <div className="flex items-center justify-center gap-1.5 p-3 shrink-0">
+              {imgs.length <= 20 && imgs.map((_: any, i: number) => (
+                <button key={i} onClick={() => setFullscreenPage(i)}
+                  className={`w-2 h-2 rounded-full border-none cursor-pointer transition-colors ${i === fullscreenPage ? 'bg-[#a855f7]' : 'bg-[#3f3f46] hover:bg-[#52525b]'}`} />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {showShare && <ShareModal title={showShare.title} url={showShare.url} onClose={() => setShowShare(null)} />}
     </div>
