@@ -30,9 +30,6 @@ export default function GalleryDetailPage() {
   const [fullscreenPage, setFullscreenPage] = useState(0)
   const [comments, setComments] = useState<any[]>([])
   const [cText, setCText] = useState('')
-  const [editing, setEditing] = useState(false)
-  const [editTitle, setEditTitle] = useState('')
-  const [editDesc, setEditDesc] = useState('')
   const [likedComments, setLikedComments] = useState<Set<string>>(new Set())
 
   const touchStart = useRef<{ x: number; y: number } | null>(null)
@@ -45,7 +42,7 @@ export default function GalleryDetailPage() {
         const { data } = await anonDb.from('gallery').select('*, profiles!gallery_author_id_fkey(display_name, handle, avatar_url)').eq('id', id).single() as { data: any }
         if (!c && data) {
           setItem(data)
-          await supabase.from('gallery').update({ total_views: ((data as any).total_views??0)+1 }).eq('id', id)
+          await anonDb.from('gallery').update({ total_views: ((data as any).total_views??0)+1 }).eq('id', id)
           if (!c) setItem((p:any) => p ? {...p, total_views: ((p.total_views??0)+1)} : p)
           const { data: cmts } = await anonDb.from('gallery_comments').select('*, profiles!gallery_comments_user_id_fkey(display_name, handle, avatar_url)').eq('gallery_id', id).order('created_at', { ascending: false }) as { data: any[] | null }
           if (!c) setComments(cmts ?? [])
@@ -218,10 +215,10 @@ export default function GalleryDetailPage() {
               Comments
             </button>
             {user && item.author_id === user.id && (<>
-              <button onClick={()=>{setEditTitle(item.title);setEditDesc(item.description||'');setEditing(true)}} className="flex items-center gap-2 px-4 py-2 rounded-lg border border-[#3f3f46] cursor-pointer text-sm text-[#a1a1aa] hover:border-[#a855f7]">
+              <Link href={`/gallery/${id}/edit`} className="flex items-center gap-2 px-4 py-2 rounded-lg border border-[#3f3f46] cursor-pointer text-sm text-[#a1a1aa] hover:border-[#a855f7] no-underline">
                 <svg className="w-[14px] h-[14px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                 Edit
-              </button>
+              </Link>
               <button onClick={async()=>{if(!confirm('Delete this gallery item?'))return;await supabase.from('gallery').delete().eq('id',id);window.location.href='/gallery'}} className="flex items-center gap-2 px-4 py-2 rounded-lg border border-red-500/30 cursor-pointer text-sm text-[#f87171] hover:bg-red-500/10">
                 Delete
               </button>
@@ -260,10 +257,10 @@ export default function GalleryDetailPage() {
                 Comments
               </button>
               {user && item.author_id === user.id && (<>
-                <button onClick={()=>{setEditTitle(item.title);setEditDesc(item.description||'');setEditing(true)}} className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-lg border border-[#3f3f46] cursor-pointer text-[0.6rem] text-[#a1a1aa] hover:border-[#a855f7]">
+                <Link href={`/gallery/${id}/edit`} className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-lg border border-[#3f3f46] cursor-pointer text-[0.6rem] text-[#a1a1aa] hover:border-[#a855f7] no-underline">
                   <svg className="w-[7px] h-[7px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                   Edit
-                </button>
+                </Link>
               </>)}
             </div>
           </div>
@@ -415,27 +412,6 @@ export default function GalleryDetailPage() {
       )}
 
       {showShare && <ShareModal title={showShare.title} url={showShare.url} onClose={()=>setShowShare(null)} />}
-
-      {/* ─── Edit modal ──────────────────────────────────────── */}
-      {editing && (
-        <div className="fixed inset-0 bg-black/90 z-[110] flex items-center justify-center p-4" onClick={()=>setEditing(false)}>
-          <div className="bg-[#18181b] rounded-2xl w-full max-w-[420px] border border-[#27272a] p-4" onClick={e=>e.stopPropagation()}>
-            <div className="flex justify-between items-center mb-3">
-              <h3 className="font-semibold text-sm">Edit Gallery Item</h3>
-              <button onClick={()=>setEditing(false)} className="bg-[#27272a] border-none w-6 h-6 rounded-md cursor-pointer text-[#a1a1aa]">&times;</button>
-            </div>
-            <div className="flex flex-col gap-3">
-              <div><label className="block text-xs text-[#71717a] mb-1">Title</label><input value={editTitle} onChange={e=>setEditTitle(e.target.value)} className="w-full bg-[#27272a] border border-[#3f3f46] rounded-lg p-2 text-[#e4e4e7] text-sm outline-none focus:border-[#a855f7]" /></div>
-              <div><label className="block text-xs text-[#71717a] mb-1">Description <span className="text-[#52525b]">(max 80 words)</span></label><textarea value={editDesc} onChange={e => { const words = e.target.value.trim().split(/\s+/).filter(Boolean); if (words.length <= 80) setEditDesc(e.target.value); else setEditDesc(words.slice(0,80).join(' ')) }} rows={3} className="w-full bg-[#27272a] border border-[#3f3f46] rounded-lg p-2 text-[#e4e4e7] text-sm outline-none resize-y font-[inherit] focus:border-[#a855f7]" /><div className="text-right text-[0.65rem] text-[#52525b] mt-0.5">{editDesc.trim().split(/\s+/).filter(Boolean).length}/80 words</div></div>
-              <button onClick={async()=>{
-                const {error}=await supabase.from('gallery').update({title:editTitle.trim(),description:editDesc||null}).eq('id',id)
-                if(error){show('Failed: '+error.message);return}
-                setItem((p:any)=>({...p,title:editTitle.trim(),description:editDesc||null}));setEditing(false);show('Updated!')
-              }} className="py-2 bg-[#7c3aed] text-white rounded-lg text-sm font-medium border-none cursor-pointer hover:bg-[#6d28d9]">Save Changes</button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

@@ -45,8 +45,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Missing file or path" }, { status: 400 });
   }
 
-  if (file.size > 5 * 1024 * 1024) {
-    return NextResponse.json({ error: "File exceeds 5 MB" }, { status: 400 });
+  if (file.size > 150 * 1024 * 1024) {
+    return NextResponse.json({ error: "File exceeds 150 MB" }, { status: 400 });
   }
 
   // ── Upload to R2 ────────────────────────────────────────────

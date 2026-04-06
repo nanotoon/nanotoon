@@ -235,6 +235,9 @@ export default function EditSeriesPage() {
   // ─── Add New Chapter ────────────────────────────────────────
   async function addChapter() {
     if (!series || !user || !newChTitle.trim()) { show('Chapter title is required'); return }
+    if (newChFiles.length < 2) { show('Please select at least 2 pages for the chapter'); return }
+    const totalSize = newChFiles.reduce((s, f) => s + f.size, 0)
+    if (totalSize > 150 * 1024 * 1024) { show('Total pages exceed 150MB'); return }
     setAddingChapter(true)
     const pageUrls: string[] = []
     for (let i = 0; i < newChFiles.length; i++) {

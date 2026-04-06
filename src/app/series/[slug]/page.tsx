@@ -81,7 +81,7 @@ export default function ReaderPage() {
         }
         if (!viewIncremented.current) {
           viewIncremented.current = true
-          await supabase.from('series').update({ total_views: (s.total_views ?? 0) + 1 }).eq('id', s.id)
+          await anonDb.from('series').update({ total_views: (s.total_views ?? 0) + 1 }).eq('id', s.id)
           if (!c) setSeries((p: any) => p ? { ...p, total_views: (p.total_views ?? 0) + 1 } : p)
         }
         clearTimeout(timeout)
@@ -99,7 +99,7 @@ export default function ReaderPage() {
     setChapterViews(ch.views ?? 0)
     anonDb.from('comments').select('*, profiles!comments_user_id_fkey(display_name, handle, avatar_url)').eq('chapter_id', ch.id).order('created_at', { ascending: false })
       .then(({ data }: any) => setComments(data ?? []))
-    supabase.from('chapters').update({ views: (ch.views ?? 0) + 1 }).eq('id', ch.id).then(() => {
+    anonDb.from('chapters').update({ views: (ch.views ?? 0) + 1 }).eq('id', ch.id).then(() => {
       setChapterViews(v => v + 1)
       setChapters(prev => prev.map(c => c.id === ch.id ? { ...c, views: (c.views ?? 0) + 1 } : c))
     })

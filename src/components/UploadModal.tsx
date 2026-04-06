@@ -165,6 +165,11 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
   async function submit() {
     if (!user || !canPublish) return
     if (files.length === 0) { setUploadError('Please select at least one image'); onToast('Please select at least one image'); return }
+    if (uploadType === 'series' && files.length < 2) { setUploadError('Please select at least 2 pages for the chapter'); onToast('At least 2 pages required'); return }
+    const totalSize = files.reduce((s, f) => s + f.size, 0)
+    if (uploadType === 'series' && totalSize > MAX_TOTAL_SERIES) { setUploadError('Total pages exceed 150MB'); onToast('Total pages exceed 150MB'); return }
+    if (uploadType === 'gallery' && files.length === 1 && files[0].size > 5 * 1024 * 1024) { setUploadError('Single image must be under 5MB'); onToast('Single image must be under 5MB'); return }
+    if (uploadType === 'gallery' && totalSize > MAX_TOTAL_GALLERY) { setUploadError('Total images exceed 50MB'); onToast('Total images exceed 50MB'); return }
     setUploading(true); setUploadError(''); setProgress('Preparing...')
     try {
       await ensureProfile()
