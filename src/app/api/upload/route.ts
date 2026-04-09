@@ -22,8 +22,13 @@ export async function POST(request: NextRequest) {
       }
     );
 
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
+    // USE getSession() — reads JWT from cookies locally, NO network call.
+    // getUser() makes an HTTP request to Supabase auth API which hangs
+    // on Cloudflare Workers free tier when the JWT needs refreshing.
+    // Middleware already keeps cookies fresh via getSession(), so the
+    // JWT here will be valid.
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.user) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
   } catch {
