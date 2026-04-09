@@ -150,7 +150,7 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
     const r = new FileReader(); r.onload = ev => setThumbPreview(ev.target?.result as string); r.readAsDataURL(f)
   }
 
-  async function ensureProfile(writeDb: ReturnType<typeof createRawClient>) {
+  async function ensureProfile(writeDb: any) {
     if (!user) throw new Error('Not logged in')
     try {
       const { data, error } = await anonDb.from('profiles').select('id').eq('id', user.id).maybeSingle() as { data: any; error: any }
@@ -192,7 +192,7 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
           global: { headers: { Authorization: `Bearer ${token}` } },
           auth: { persistSession: false, autoRefreshToken: false },
         }
-      )
+      ) as any
 
       await ensureProfile(writeDb)
       setProgress('Starting upload...')
@@ -206,7 +206,7 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
     setUploading(false)
   }
 
-  async function doSeriesUpload(token: string, writeDb: ReturnType<typeof createRawClient>) {
+  async function doSeriesUpload(token: string, writeDb: any) {
     let seriesId = selectedSeriesId
     if (mode === 'new') {
       setProgress('Creating series...')
@@ -248,7 +248,7 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
     onToast('Chapter published! 🎉'); onClose()
   }
 
-  async function doGalleryUpload(token: string, writeDb: ReturnType<typeof createRawClient>) {
+  async function doGalleryUpload(token: string, writeDb: any) {
     const imageUrls: string[] = []
     for (let i = 0; i < files.length; i++) {
       setProgress('Compressing image ' + (i + 1) + '/' + files.length + '...')

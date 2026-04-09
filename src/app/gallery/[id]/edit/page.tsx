@@ -54,7 +54,7 @@ export default function EditGalleryPage() {
         global: { headers: { Authorization: `Bearer ${token}` } },
         auth: { persistSession: false, autoRefreshToken: false },
       }
-    )
+    ) as any
     return { token, db }
   }
 
