@@ -7,6 +7,7 @@ import { useToast } from '@/components/Toast'
 import { useAuth } from '@/contexts/AuthContext'
 import { createClient } from '@/lib/supabase/client'
 import { createAnonClient } from '@/lib/supabase/anon'
+import { createClient as createRawClient } from '@supabase/supabase-js'
 
 const MAX_FILE_GALLERY = 10 * 1024 * 1024   // 10MB per file (multi)
 const MAX_SINGLE_GALLERY = 5 * 1024 * 1024  // 5MB for single image
@@ -40,6 +41,37 @@ export default function EditGalleryPage() {
   // Thumbnail (albums only)
   const [thumbPreview, setThumbPreview] = useState<string | null>(null)
   const [newThumbFile, setNewThumbFile] = useState<File | null>(null)
+
+  // Helper: get a fresh write client + token that won't hang from shared locks
+  async function getWriteTools() {
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session?.access_token) throw new Error('Not logged in — please sign in again')
+    const token = session.access_token
+    const db = createRawClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        global: { headers: { Authorization: `Bearer ${token}` } },
+        auth: { persistSession: false, autoRefreshToken: false },
+      }
+    )
+    return { token, db }
+  }
+
+  // Helper: upload to R2 with explicit auth token
+  async function uploadFileToR2(file: File, path: string, token: string): Promise<string> {
+    const fd = new FormData()
+    fd.append('file', file)
+    fd.append('path', path)
+    const res = await fetch('/api/upload', {
+      method: 'POST',
+      body: fd,
+      headers: { 'Authorization': `Bearer ${token}` },
+    })
+    const json = await res.json()
+    if (!res.ok || json.error) throw new Error(json.error || 'Upload failed')
+    return json.url
+  }
 
   useEffect(() => {
     async function load() {
@@ -118,57 +150,46 @@ export default function EditGalleryPage() {
 
     setSaving(true)
 
-    // Upload thumbnail if changed
-    let thumbnailUrl = item.thumbnail_url
-    if (newThumbFile) {
-      const path = `gallery/${user.id}/thumb_${Date.now()}.webp`
-      try {
-        const fd = new FormData()
-        fd.append('file', newThumbFile)
-        fd.append('path', path)
-        const res = await fetch('/api/upload', { method: 'POST', body: fd })
-        const json = await res.json()
-        if (!res.ok || json.error) { show('Thumbnail upload failed: ' + (json.error || 'Unknown error')); setSaving(false); return }
-        thumbnailUrl = json.url
-      } catch (e: any) { show('Thumbnail upload failed: ' + e.message); setSaving(false); return }
-    }
-    // If album switched to single image, clear thumbnail
-    if (totalImages === 1) thumbnailUrl = null
+    try {
+      const { token, db } = await getWriteTools()
 
-    // Upload new image files
-    const uploadedUrls: string[] = []
-    for (let i = 0; i < newImageFiles.length; i++) {
-      const file = newImageFiles[i]
-      const path = `gallery/${user.id}/${Date.now()}_${i}.webp`
-      show(`Uploading image ${i + 1}/${newImageFiles.length}...`)
-      try {
-        const fd = new FormData()
-        fd.append('file', file)
-        fd.append('path', path)
-        const res = await fetch('/api/upload', { method: 'POST', body: fd })
-        const json = await res.json()
-        if (!res.ok || json.error) { show(`Image ${i + 1} failed: ${json.error || 'Upload error'}`); setSaving(false); return }
-        uploadedUrls.push(json.url)
-      } catch (e: any) { show(`Image ${i + 1} failed: ${e.message}`); setSaving(false); return }
-    }
+      // Upload thumbnail if changed
+      let thumbnailUrl = item.thumbnail_url
+      if (newThumbFile) {
+        const path = `gallery/${user.id}/thumb_${Date.now()}.webp`
+        thumbnailUrl = await uploadFileToR2(newThumbFile, path, token)
+      }
+      // If album switched to single image, clear thumbnail
+      if (totalImages === 1) thumbnailUrl = null
 
-    const finalImages = [...existingImages, ...uploadedUrls]
+      // Upload new image files
+      const uploadedUrls: string[] = []
+      for (let i = 0; i < newImageFiles.length; i++) {
+        const file = newImageFiles[i]
+        const path = `gallery/${user.id}/${Date.now()}_${i}.webp`
+        show(`Uploading image ${i + 1}/${newImageFiles.length}...`)
+        const url = await uploadFileToR2(file, path, token)
+        uploadedUrls.push(url)
+      }
 
-    const { error } = await supabase.from('gallery').update({
-      title: title.trim(),
-      description: desc || null,
-      is_mature: isMature,
-      reading_mode: readingMode,
-      image_urls: finalImages,
-      thumbnail_url: thumbnailUrl,
-    }).eq('id', id)
+      const finalImages = [...existingImages, ...uploadedUrls]
 
-    if (error) { show('Save failed: ' + error.message); setSaving(false); return }
-    setItem((p: any) => ({ ...p, title: title.trim(), description: desc || null, is_mature: isMature, reading_mode: readingMode, image_urls: finalImages, thumbnail_url: thumbnailUrl }))
-    setExistingImages(finalImages)
-    setNewImageFiles([])
-    setNewThumbFile(null)
-    show('Changes saved!')
+      const { error } = await db.from('gallery').update({
+        title: title.trim(),
+        description: desc || null,
+        is_mature: isMature,
+        reading_mode: readingMode,
+        image_urls: finalImages,
+        thumbnail_url: thumbnailUrl,
+      }).eq('id', id)
+
+      if (error) { show('Save failed: ' + error.message); setSaving(false); return }
+      setItem((p: any) => ({ ...p, title: title.trim(), description: desc || null, is_mature: isMature, reading_mode: readingMode, image_urls: finalImages, thumbnail_url: thumbnailUrl }))
+      setExistingImages(finalImages)
+      setNewImageFiles([])
+      setNewThumbFile(null)
+      show('Changes saved!')
+    } catch (e: any) { show('Save failed: ' + e.message) }
     setSaving(false)
   }
 
@@ -177,9 +198,12 @@ export default function EditGalleryPage() {
     if (!item) return
     if (!confirm('Delete this gallery item permanently?')) return
     if (!confirm('This cannot be undone. Are you sure?')) return
-    await supabase.from('gallery').delete().eq('id', id)
-    show('Gallery item deleted')
-    router.push('/profile')
+    try {
+      const { db } = await getWriteTools()
+      await db.from('gallery').delete().eq('id', id)
+      show('Gallery item deleted')
+      router.push('/profile')
+    } catch (e: any) { show('Delete failed: ' + e.message) }
   }
 
   if (loading) return <div className="min-h-screen"><LoadingSpinner /></div>
