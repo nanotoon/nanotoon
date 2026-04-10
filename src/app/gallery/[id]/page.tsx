@@ -49,9 +49,9 @@ export default function GalleryDetailPage() {
           if (user) {
             const uid = getAuthUserId() || user.id
             const [lk, fw, fv, cl] = await Promise.all([
-              anonDb.from('gallery_likes').select('id').eq('user_id', uid).eq('gallery_id', id).maybeSingle(),
-              anonDb.from('follows').select('id').eq('follower_id', uid).eq('following_id', data.author_id).maybeSingle(),
-              anonDb.from('gallery_favorites').select('id').eq('user_id', uid).eq('gallery_id', id).maybeSingle(),
+              anonDb.from('gallery_likes').select('*').eq('user_id', uid).eq('gallery_id', id).maybeSingle(),
+              anonDb.from('follows').select('*').eq('follower_id', uid).eq('following_id', data.author_id).maybeSingle(),
+              anonDb.from('gallery_favorites').select('*').eq('user_id', uid).eq('gallery_id', id).maybeSingle(),
               anonDb.from('comment_likes').select('comment_id').eq('user_id', uid),
             ]) as any[]
             if (!c) { setLiked(!!lk.data); setIsFollowing(!!fw.data); setFavorited(!!fv.data); setLikedComments(new Set((cl.data ?? []).map((x: any) => x.comment_id))) }
