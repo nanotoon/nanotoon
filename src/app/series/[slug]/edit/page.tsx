@@ -183,9 +183,10 @@ export default function EditSeriesPage() {
 
   // ─── Page Management ────────────────────────────────────────
   async function deletePage(chId: string, pageIndex: number) {
-    if (!confirm(`Delete page ${pageIndex + 1}?`)) return
     const ch = chapters.find(c => c.id === chId)
     if (!ch || !ch.page_urls) return
+    if (ch.page_urls.length <= 2) { show('Chapters must have at least 2 pages'); return }
+    if (!confirm(`Delete page ${pageIndex + 1}?`)) return
     const newUrls = ch.page_urls.filter((_: any, i: number) => i !== pageIndex)
     const { error } = await (createWriteClient() as any).from('chapters').update({ page_urls: newUrls.length > 0 ? newUrls : null }).eq('id', chId)
     if (error) { show('Failed: ' + error.message); return }
