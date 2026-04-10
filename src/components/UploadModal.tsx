@@ -2,9 +2,8 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { GENRES_ALL } from '@/data/mock'
 import { useAuth } from '@/contexts/AuthContext'
-import { createClient } from '@/lib/supabase/client'
+import { createWriteClient } from '@/lib/supabase/write'
 import { createAnonClient } from '@/lib/supabase/anon'
-import { createClient as createRawClient } from '@supabase/supabase-js'
 
 const MAX_FILE = 10 * 1024 * 1024
 const MAX_TOTAL_SERIES = 150 * 1024 * 1024
@@ -44,48 +43,6 @@ async function uploadToR2(file: File, path: string): Promise<string> {
   return json.url
 }
 
-// ─── Read access token directly from cookie (bypasses singleton locks) ──
-function getAccessTokenFromCookie(): string {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
-  const ref = url.match(/\/\/([^.]+)\./)?.[1] || ''
-  const cookieName = `sb-${ref}-auth-token`
-  const cookies = document.cookie.split(';').map(c => c.trim())
-
-  const chunks: { idx: number; val: string }[] = []
-  for (const c of cookies) {
-    const eq = c.indexOf('=')
-    if (eq < 0) continue
-    const name = c.slice(0, eq)
-    const val = c.slice(eq + 1)
-    if (name === cookieName) chunks.push({ idx: -1, val })
-    else if (name.startsWith(cookieName + '.')) {
-      const i = parseInt(name.split('.').pop()!)
-      if (!isNaN(i)) chunks.push({ idx: i, val })
-    }
-  }
-  if (chunks.length === 0) throw new Error('Not logged in — please sign in and try again')
-
-  chunks.sort((a, b) => a.idx - b.idx)
-  let raw = chunks.map(c => decodeURIComponent(c.val)).join('')
-  if (raw.startsWith('base64-')) raw = atob(raw.slice(7))
-  const session = JSON.parse(raw)
-  const token = session?.access_token
-  if (!token) throw new Error('Session expired — please refresh the page')
-  return token
-}
-
-// ─── Create a fresh Supabase client with explicit token (no locks) ──
-function makeWriteClient(token: string): any {
-  return createRawClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      global: { headers: { Authorization: `Bearer ${token}` } },
-      auth: { persistSession: false, autoRefreshToken: false },
-    }
-  )
-}
-
 function MatureTip({ mobile }: { mobile: boolean }) {
   const [open, setOpen] = useState(false)
   if (mobile) return (<>
@@ -102,7 +59,6 @@ function MatureTip({ mobile }: { mobile: boolean }) {
 
 export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast: (m: string) => void }) {
   const { user } = useAuth()
-  const supabase = useMemo(() => createClient(), [])
   const anonDb = useMemo(() => createAnonClient(), [])
   const [step, setStep] = useState<'choose' | 'existing' | 'form'>('choose')
   const [uploadType, setUploadType] = useState<'series' | 'gallery'>('series')
@@ -188,7 +144,7 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
     const r = new FileReader(); r.onload = ev => setThumbPreview(ev.target?.result as string); r.readAsDataURL(f)
   }
 
-  async function ensureProfile(writeDb: any) {
+  async function ensureProfile() {
     if (!user) throw new Error('Not logged in')
     try {
       const { data, error } = await anonDb.from('profiles').select('id').eq('id', user.id).maybeSingle() as { data: any; error: any }
@@ -199,7 +155,7 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
     }
     const dn = user.user_metadata?.display_name || user.user_metadata?.full_name || user.email?.split('@')[0] || 'Creator'
     const h = (user.user_metadata?.handle || user.email?.split('@')[0]?.replace(/[^a-zA-Z0-9_]/g, '') || 'user_' + user.id.slice(0, 8)).toLowerCase()
-    const { error } = await writeDb.from('profiles').insert({ id: user.id, display_name: dn, handle: h })
+    const { error } = await (createWriteClient() as any).from('profiles').insert({ id: user.id, display_name: dn, handle: h })
     if (error && !error.message.includes('duplicate') && !error.code?.includes('23505')) {
       throw new Error('Profile setup failed: ' + error.message)
     }
@@ -215,14 +171,10 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
     if (uploadType === 'gallery' && totalSize > MAX_TOTAL_GALLERY) { setUploadError('Total images exceed 50MB'); onToast('Total images exceed 50MB'); return }
     setUploading(true); setUploadError(''); setProgress('Preparing...')
     try {
-      // Read token straight from cookie — never touches the singleton auth client
-      const token = getAccessTokenFromCookie()
-      const writeDb = makeWriteClient(token)
-
-      await ensureProfile(writeDb)
+      await ensureProfile()
       setProgress('Starting upload...')
-      if (uploadType === 'gallery') await doGalleryUpload(writeDb)
-      else await doSeriesUpload(writeDb)
+      if (uploadType === 'gallery') await doGalleryUpload()
+      else await doSeriesUpload()
     } catch (err: any) {
       console.error('Upload error:', err)
       const msg = err?.message || 'Unexpected error'
@@ -231,7 +183,7 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
     setUploading(false)
   }
 
-  async function doSeriesUpload(writeDb: any) {
+  async function doSeriesUpload() {
     let seriesId = selectedSeriesId
     if (mode === 'new') {
       setProgress('Creating series...')
@@ -247,7 +199,7 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
         }
       }
       const slug = seriesTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') + '-' + Date.now().toString(36)
-      const { data: ns, error: sErr } = await writeDb.from('series').insert({
+      const { data: ns, error: sErr } = await (createWriteClient() as any).from('series').insert({
         title: seriesTitle, slug, description: desc || null, format: format!, genres: Array.from(genres),
         thumbnail_url: thumbnailUrl, author_id: user!.id, reading_mode: readingMode,
       }).select().single()
@@ -264,16 +216,16 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
       pageUrls.push(url)
     }
     setProgress('Saving chapter...')
-    const { error: chErr } = await writeDb.from('chapters').insert({
+    const { error: chErr } = await (createWriteClient() as any).from('chapters').insert({
       series_id: seriesId, chapter_number: chapterNumber, title: chapterTitle, rating: rating!,
       page_urls: pageUrls.length > 0 ? pageUrls : null, reading_mode: readingMode,
     })
     if (chErr) throw new Error(chErr.message || 'Chapter save failed')
-    await writeDb.from('series').update({ updated_at: new Date().toISOString() }).eq('id', seriesId)
+    await (createWriteClient() as any).from('series').update({ updated_at: new Date().toISOString() }).eq('id', seriesId)
     onToast('Chapter published! 🎉'); onClose()
   }
 
-  async function doGalleryUpload(writeDb: any) {
+  async function doGalleryUpload() {
     const imageUrls: string[] = []
     for (let i = 0; i < files.length; i++) {
       setProgress('Compressing image ' + (i + 1) + '/' + files.length + '...')
@@ -290,7 +242,7 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
       try { thumbnailUrl = await uploadToR2(compressed, path) } catch { /* skip */ }
     }
     setProgress('Saving...')
-    const { error } = await writeDb.from('gallery').insert({
+    const { error } = await (createWriteClient() as any).from('gallery').insert({
       title: gTitle.trim(), description: gDesc || null, image_urls: imageUrls,
       thumbnail_url: thumbnailUrl, author_id: user!.id, is_mature: gMature,
       tags: gTags ? gTags.split(',').map((t: string) => t.trim()).filter(Boolean) : [],

@@ -6,9 +6,8 @@ import Link from 'next/link'
 import { GENRES_ALL, GRADIENTS } from '@/data/mock'
 import { useToast } from '@/components/Toast'
 import { useAuth } from '@/contexts/AuthContext'
-import { createClient } from '@/lib/supabase/client'
+import { createWriteClient } from '@/lib/supabase/write'
 import { createAnonClient } from '@/lib/supabase/anon'
-import { createClient as createRawClient } from '@supabase/supabase-js'
 
 export default function EditSeriesPage() {
   const params = useParams()
@@ -16,7 +15,6 @@ export default function EditSeriesPage() {
   const { show } = useToast()
   const { user } = useAuth()
   const slug = params.slug as string
-  const supabase = useMemo(() => createClient(), [])
   const anonDb = useMemo(() => createAnonClient(), [])
   const thumbRef = useRef<HTMLInputElement>(null)
 
@@ -46,48 +44,6 @@ export default function EditSeriesPage() {
   const [addingChapter, setAddingChapter] = useState(false)
   const chFileRef = useRef<HTMLInputElement>(null)
   const addPageRef = useRef<HTMLInputElement>(null)
-
-  // ─── Cookie-based write client (bypasses singleton lock issues) ──
-  function getWriteTools() {
-    const url = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
-    const ref = url.match(/\/\/([^.]+)\./)?.[1] || ''
-    const cookieName = `sb-${ref}-auth-token`
-    const cookies = document.cookie.split(';').map(c => c.trim())
-    const chunks: { idx: number; val: string }[] = []
-    for (const c of cookies) {
-      const eq = c.indexOf('=')
-      if (eq < 0) continue
-      const name = c.slice(0, eq)
-      const val = c.slice(eq + 1)
-      if (name === cookieName) chunks.push({ idx: -1, val })
-      else if (name.startsWith(cookieName + '.')) {
-        const i = parseInt(name.split('.').pop()!)
-        if (!isNaN(i)) chunks.push({ idx: i, val })
-      }
-    }
-    if (chunks.length === 0) throw new Error('Not logged in — please sign in and try again')
-    chunks.sort((a, b) => a.idx - b.idx)
-    let raw = chunks.map(c => decodeURIComponent(c.val)).join('')
-    if (raw.startsWith('base64-')) raw = atob(raw.slice(7))
-    const session = JSON.parse(raw)
-    const token = session?.access_token
-    if (!token) throw new Error('Session expired — please refresh the page')
-    const db: any = createRawClient(url, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
-      global: { headers: { Authorization: `Bearer ${token}` } },
-      auth: { persistSession: false, autoRefreshToken: false },
-    })
-    return { token, db }
-  }
-
-  async function uploadFileToR2(file: File, path: string): Promise<string> {
-    const fd = new FormData()
-    fd.append('file', file)
-    fd.append('path', path)
-    const res = await fetch('/api/upload', { method: 'POST', body: fd })
-    const json = await res.json()
-    if (!res.ok || json.error) throw new Error(json.error || 'Upload failed')
-    return json.url
-  }
 
   useEffect(() => {
     async function fetch() {
@@ -133,25 +89,30 @@ export default function EditSeriesPage() {
   async function save() {
     if (!series || !user) return
     setSaving(true)
-    try {
-      const { db } = getWriteTools()
-      let thumbnailUrl = series.thumbnail_url
-      if (newThumbFile) {
-        const ext = newThumbFile.name.split('.').pop()
-        const path = `thumbnails/${user.id}/${Date.now()}.${ext}`
-        thumbnailUrl = await uploadFileToR2(newThumbFile, path)
-      }
-      const { error } = await db.from('series').update({
-        title, description: desc, format, genres: Array.from(genres),
-        thumbnail_url: thumbnailUrl, updated_at: new Date().toISOString()
-      }).eq('id', series.id)
-      if (error) show('Save failed: ' + error.message)
-      else {
-        setSeries((s: any) => ({ ...s, title, description: desc, format, genres: Array.from(genres), thumbnail_url: thumbnailUrl }))
-        setNewThumbFile(null)
-        show('Changes saved!')
-      }
-    } catch (e: any) { show('Save failed: ' + e.message) }
+    let thumbnailUrl = series.thumbnail_url
+    if (newThumbFile) {
+      const ext = newThumbFile.name.split('.').pop()
+      const path = `thumbnails/${user.id}/${Date.now()}.${ext}`
+      try {
+        const fd = new FormData()
+        fd.append('file', newThumbFile)
+        fd.append('path', path)
+        const res = await fetch('/api/upload', { method: 'POST', body: fd })
+        const json = await res.json()
+        if (!res.ok || json.error) { show('Thumbnail upload failed: ' + (json.error || 'Unknown error')); setSaving(false); return }
+        thumbnailUrl = json.url
+      } catch (e: any) { show('Thumbnail upload failed: ' + e.message); setSaving(false); return }
+    }
+    const { error } = await (createWriteClient() as any).from('series').update({
+      title, description: desc, format, genres: Array.from(genres),
+      thumbnail_url: thumbnailUrl, updated_at: new Date().toISOString()
+    }).eq('id', series.id)
+    if (error) show('Save failed: ' + error.message)
+    else {
+      setSeries((s: any) => ({ ...s, title, description: desc, format, genres: Array.from(genres), thumbnail_url: thumbnailUrl }))
+      setNewThumbFile(null)
+      show('Changes saved!')
+    }
     setSaving(false)
   }
 
@@ -160,37 +121,33 @@ export default function EditSeriesPage() {
     if (!series) return
     if (!confirm('Delete this series and all its chapters?')) return
     if (!confirm('This cannot be undone. Are you sure?')) return
-    try {
-      const { db } = getWriteTools()
-      await db.from('series').delete().eq('id', series.id)
-      show('Series deleted')
-      router.push('/profile')
-    } catch (e: any) { show('Delete failed: ' + e.message) }
+    await (createWriteClient() as any).from('series').delete().eq('id', series.id)
+    show('Series deleted')
+    router.push('/profile')
   }
 
   // ─── Save Chapter Edits ─────────────────────────────────────
   async function saveChapter(chId: string) {
     setSavingCh(true)
-    try {
-      const { db } = getWriteTools()
-      const { error } = await db.from('chapters').update({ title: editChTitle, rating: editChRating }).eq('id', chId)
-      if (error) show('Failed: ' + error.message)
-      else { setChapters(prev => prev.map(c => c.id === chId ? { ...c, title: editChTitle, rating: editChRating } : c)); show('Chapter updated!') }
-    } catch (e: any) { show('Failed: ' + e.message) }
+    const { error } = await (createWriteClient() as any).from('chapters').update({
+      title: editChTitle, rating: editChRating
+    }).eq('id', chId)
+    if (error) show('Failed: ' + error.message)
+    else {
+      setChapters(prev => prev.map(c => c.id === chId ? { ...c, title: editChTitle, rating: editChRating } : c))
+      show('Chapter updated!')
+    }
     setSavingCh(false)
   }
 
   // ─── Delete Chapter ─────────────────────────────────────────
   async function deleteChapter(id: string) {
     if (!confirm('Delete this chapter and all its pages?')) return
-    try {
-      const { db } = getWriteTools()
-      const { error } = await db.from('chapters').delete().eq('id', id)
-      if (error) { show('Failed: ' + error.message); return }
-      setChapters(prev => prev.filter(c => c.id !== id))
-      if (expandedChId === id) setExpandedChId(null)
-      show('Chapter deleted')
-    } catch (e: any) { show('Failed: ' + e.message) }
+    const { error } = await (createWriteClient() as any).from('chapters').delete().eq('id', id)
+    if (error) { show('Failed: ' + error.message); return }
+    setChapters(prev => prev.filter(c => c.id !== id))
+    if (expandedChId === id) setExpandedChId(null)
+    show('Chapter deleted')
   }
 
   // ─── Move Chapter ───────────────────────────────────────────
@@ -199,22 +156,19 @@ export default function EditSeriesPage() {
     if (idx < 0) return
     const swapIdx = direction === 'up' ? idx - 1 : idx + 1
     if (swapIdx < 0 || swapIdx >= chapters.length) return
-    try {
-      const { db } = getWriteTools()
-      const chA = chapters[idx]
-      const chB = chapters[swapIdx]
-      await Promise.all([
-        db.from('chapters').update({ chapter_number: chB.chapter_number }).eq('id', chA.id),
-        db.from('chapters').update({ chapter_number: chA.chapter_number }).eq('id', chB.id),
-      ])
-      const updated = [...chapters]
-      const tempNum = updated[idx].chapter_number
-      updated[idx] = { ...updated[idx], chapter_number: updated[swapIdx].chapter_number }
-      updated[swapIdx] = { ...updated[swapIdx], chapter_number: tempNum }
-      updated.sort((a, b) => a.chapter_number - b.chapter_number)
-      setChapters(updated)
-      show('Chapter order updated')
-    } catch (e: any) { show('Failed: ' + e.message) }
+    const chA = chapters[idx]
+    const chB = chapters[swapIdx]
+    await Promise.all([
+      (createWriteClient() as any).from('chapters').update({ chapter_number: chB.chapter_number }).eq('id', chA.id),
+      (createWriteClient() as any).from('chapters').update({ chapter_number: chA.chapter_number }).eq('id', chB.id),
+    ])
+    const updated = [...chapters]
+    const tempNum = updated[idx].chapter_number
+    updated[idx] = { ...updated[idx], chapter_number: updated[swapIdx].chapter_number }
+    updated[swapIdx] = { ...updated[swapIdx], chapter_number: tempNum }
+    updated.sort((a, b) => a.chapter_number - b.chapter_number)
+    setChapters(updated)
+    show('Chapter order updated')
   }
 
   // ─── Page Management ────────────────────────────────────────
@@ -222,14 +176,11 @@ export default function EditSeriesPage() {
     if (!confirm(`Delete page ${pageIndex + 1}?`)) return
     const ch = chapters.find(c => c.id === chId)
     if (!ch || !ch.page_urls) return
-    try {
-      const { db } = getWriteTools()
-      const newUrls = ch.page_urls.filter((_: any, i: number) => i !== pageIndex)
-      const { error } = await db.from('chapters').update({ page_urls: newUrls.length > 0 ? newUrls : null }).eq('id', chId)
-      if (error) { show('Failed: ' + error.message); return }
-      setChapters(prev => prev.map(c => c.id === chId ? { ...c, page_urls: newUrls.length > 0 ? newUrls : null } : c))
-      show('Page deleted')
-    } catch (e: any) { show('Failed: ' + e.message) }
+    const newUrls = ch.page_urls.filter((_: any, i: number) => i !== pageIndex)
+    const { error } = await (createWriteClient() as any).from('chapters').update({ page_urls: newUrls.length > 0 ? newUrls : null }).eq('id', chId)
+    if (error) { show('Failed: ' + error.message); return }
+    setChapters(prev => prev.map(c => c.id === chId ? { ...c, page_urls: newUrls.length > 0 ? newUrls : null } : c))
+    show('Page deleted')
   }
 
   async function movePage(chId: string, fromIdx: number, direction: 'up' | 'down') {
@@ -237,17 +188,14 @@ export default function EditSeriesPage() {
     if (!ch || !ch.page_urls) return
     const toIdx = direction === 'up' ? fromIdx - 1 : fromIdx + 1
     if (toIdx < 0 || toIdx >= ch.page_urls.length) return
-    try {
-      const { db } = getWriteTools()
-      const newUrls = [...ch.page_urls]
-      const temp = newUrls[fromIdx]
-      newUrls[fromIdx] = newUrls[toIdx]
-      newUrls[toIdx] = temp
-      const { error } = await db.from('chapters').update({ page_urls: newUrls }).eq('id', chId)
-      if (error) { show('Failed: ' + error.message); return }
-      setChapters(prev => prev.map(c => c.id === chId ? { ...c, page_urls: newUrls } : c))
-      show('Page order updated')
-    } catch (e: any) { show('Failed: ' + e.message) }
+    const newUrls = [...ch.page_urls]
+    const temp = newUrls[fromIdx]
+    newUrls[fromIdx] = newUrls[toIdx]
+    newUrls[toIdx] = temp
+    const { error } = await (createWriteClient() as any).from('chapters').update({ page_urls: newUrls }).eq('id', chId)
+    if (error) { show('Failed: ' + error.message); return }
+    setChapters(prev => prev.map(c => c.id === chId ? { ...c, page_urls: newUrls } : c))
+    show('Page order updated')
   }
 
   async function addPagesToChapter(chId: string, e: React.ChangeEvent<HTMLInputElement>) {
@@ -255,25 +203,32 @@ export default function EditSeriesPage() {
     if (files.length === 0) return
     const ch = chapters.find(c => c.id === chId)
     if (!ch || !series) return
-    try {
-      const { db } = getWriteTools()
-      show(`Uploading ${files.length} page(s)...`)
-      const existingUrls = ch.page_urls || []
-      const newUrls: string[] = []
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i]
-        const ext = file.name.split('.').pop()
-        const pageNum = existingUrls.length + i + 1
-        const path = `chapters/${series.id}/${ch.chapter_number}/${String(pageNum).padStart(3, '0')}_${Date.now()}.${ext}`
-        const url = await uploadFileToR2(file, path)
-        newUrls.push(url)
-      }
-      const allUrls = [...existingUrls, ...newUrls]
-      const { error } = await db.from('chapters').update({ page_urls: allUrls }).eq('id', chId)
-      if (error) { show('Failed to save: ' + error.message); return }
-      setChapters(prev => prev.map(c => c.id === chId ? { ...c, page_urls: allUrls } : c))
-      show(`${files.length} page(s) added!`)
-    } catch (e: any) { show('Failed: ' + e.message) }
+
+    show(`Uploading ${files.length} page(s)...`)
+    const existingUrls = ch.page_urls || []
+    const newUrls: string[] = []
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i]
+      const ext = file.name.split('.').pop()
+      const pageNum = existingUrls.length + i + 1
+      const path = `chapters/${series.id}/${ch.chapter_number}/${String(pageNum).padStart(3, '0')}_${Date.now()}.${ext}`
+      try {
+        const fd = new FormData()
+        fd.append('file', file)
+        fd.append('path', path)
+        const res = await fetch('/api/upload', { method: 'POST', body: fd })
+        const json = await res.json()
+        if (!res.ok || json.error) { show(`Page ${i + 1} failed: ${json.error || 'Upload error'}`); return }
+        newUrls.push(json.url)
+      } catch (e: any) { show(`Page ${i + 1} failed: ${e.message}`); return }
+    }
+
+    const allUrls = [...existingUrls, ...newUrls]
+    const { error } = await (createWriteClient() as any).from('chapters').update({ page_urls: allUrls }).eq('id', chId)
+    if (error) { show('Failed to save: ' + error.message); return }
+    setChapters(prev => prev.map(c => c.id === chId ? { ...c, page_urls: allUrls } : c))
+    show(`${files.length} page(s) added!`)
   }
 
   // ─── Add New Chapter ────────────────────────────────────────
@@ -283,27 +238,31 @@ export default function EditSeriesPage() {
     const totalSize = newChFiles.reduce((s, f) => s + f.size, 0)
     if (totalSize > 150 * 1024 * 1024) { show('Total pages exceed 150MB'); return }
     setAddingChapter(true)
-    try {
-      const { db } = getWriteTools()
-      const pageUrls: string[] = []
-      for (let i = 0; i < newChFiles.length; i++) {
-        const file = newChFiles[i]
-        const ext = file.name.split('.').pop()
-        const path = `chapters/${series.id}/${newChNumber}/${String(i + 1).padStart(3, '0')}.${ext}`
-        const url = await uploadFileToR2(file, path)
-        pageUrls.push(url)
-      }
-      const { data: ch, error } = await db.from('chapters').insert({
-        series_id: series.id, chapter_number: newChNumber, title: newChTitle.trim(),
-        rating: newChRating, page_urls: pageUrls.length > 0 ? pageUrls : null,
-      }).select().single()
-      if (error) { show('Failed: ' + error.message); setAddingChapter(false); return }
-      await db.from('series').update({ updated_at: new Date().toISOString() }).eq('id', series.id)
-      setChapters(prev => [...prev, ch].sort((a, b) => a.chapter_number - b.chapter_number))
-      setNewChTitle(''); setNewChNumber(newChNumber + 1); setNewChFiles([]); setNewChRating('General')
-      setShowAddChapter(false); setAddingChapter(false)
-      show('Chapter added!')
-    } catch (e: any) { show('Failed: ' + e.message); setAddingChapter(false) }
+    const pageUrls: string[] = []
+    for (let i = 0; i < newChFiles.length; i++) {
+      const file = newChFiles[i]
+      const ext = file.name.split('.').pop()
+      const path = `chapters/${series.id}/${newChNumber}/${String(i + 1).padStart(3, '0')}.${ext}`
+      try {
+        const fd = new FormData()
+        fd.append('file', file)
+        fd.append('path', path)
+        const res = await fetch('/api/upload', { method: 'POST', body: fd })
+        const json = await res.json()
+        if (!res.ok || json.error) { show(`Page ${i + 1} failed: ${json.error || 'Upload error'}`); setAddingChapter(false); return }
+        pageUrls.push(json.url)
+      } catch (e: any) { show(`Page ${i + 1} failed: ${e.message}`); setAddingChapter(false); return }
+    }
+    const { data: ch, error } = await (createWriteClient() as any).from('chapters').insert({
+      series_id: series.id, chapter_number: newChNumber, title: newChTitle.trim(),
+      rating: newChRating, page_urls: pageUrls.length > 0 ? pageUrls : null,
+    }).select().single()
+    if (error) { show('Failed: ' + error.message); setAddingChapter(false); return }
+    await (createWriteClient() as any).from('series').update({ updated_at: new Date().toISOString() }).eq('id', series.id)
+    setChapters(prev => [...prev, ch].sort((a, b) => a.chapter_number - b.chapter_number))
+    setNewChTitle(''); setNewChNumber(newChNumber + 1); setNewChFiles([]); setNewChRating('General')
+    setShowAddChapter(false); setAddingChapter(false)
+    show('Chapter added!')
   }
 
   if (loading) return <div className="min-h-screen"><LoadingSpinner /></div>

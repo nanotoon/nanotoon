@@ -9,8 +9,8 @@ import { ShareModal } from '@/components/ShareModal'
 import { ReportModal } from '@/components/ReportModal'
 import { useToast } from '@/components/Toast'
 import { useAuth } from '@/contexts/AuthContext'
-import { createClient } from '@/lib/supabase/client'
 import { createAnonClient } from '@/lib/supabase/anon'
+import { createWriteClient } from '@/lib/supabase/write'
 
 function fmtNum(n: number | null | undefined): string {
   if (!n) return '0'; if (n >= 1e6) return (n/1e6).toFixed(1).replace(/\.0$/,'')+'M'; if (n >= 1e3) return (n/1e3).toFixed(1).replace(/\.0$/,'')+'K'; return n.toString()
@@ -25,7 +25,6 @@ export default function ReaderPage() {
   const { show } = useToast()
   const { user, profile } = useAuth()
   const slug = params.slug as string
-  const supabase = useMemo(() => createClient(), [])
   const anonDb = useMemo(() => createAnonClient(), [])
   const viewIncremented = useRef(false)
 
@@ -72,16 +71,17 @@ export default function ReaderPage() {
         if (!c) setSeriesComments(sc ?? [])
         if (user) {
           const [lk, fv, fw, cl] = await Promise.all([
-            supabase.from('likes').select('*').eq('user_id', user.id).eq('series_id', s.id).maybeSingle(),
-            supabase.from('favorites').select('*').eq('user_id', user.id).eq('series_id', s.id).maybeSingle(),
-            supabase.from('follows').select('*').eq('follower_id', user.id).eq('following_id', s.author_id).maybeSingle(),
-            supabase.from('comment_likes').select('comment_id').eq('user_id', user.id),
+            anonDb.from('likes').select('*').eq('user_id', user.id).eq('series_id', s.id).maybeSingle(),
+            anonDb.from('favorites').select('*').eq('user_id', user.id).eq('series_id', s.id).maybeSingle(),
+            anonDb.from('follows').select('*').eq('follower_id', user.id).eq('following_id', s.author_id).maybeSingle(),
+            anonDb.from('comment_likes').select('comment_id').eq('user_id', user.id),
           ])
           if (!c) { setLiked(!!lk.data); setFavorited(!!fv.data); setIsFollowing(!!fw.data); setLikedComments(new Set((cl.data ?? []).map((x: any) => x.comment_id))) }
         }
         if (!viewIncremented.current) {
           viewIncremented.current = true
-          await (anonDb as any).from('series').update({ total_views: (s.total_views ?? 0) + 1 }).eq('id', s.id)
+          const wc = createWriteClient()
+          if (wc) await (wc as any).from('series').update({ total_views: (s.total_views ?? 0) + 1 }).eq('id', s.id)
           if (!c) setSeries((p: any) => p ? { ...p, total_views: (p.total_views ?? 0) + 1 } : p)
         }
         clearTimeout(timeout)
@@ -90,7 +90,7 @@ export default function ReaderPage() {
     }
     load()
     return () => { c = true }
-  }, [slug, user, anonDb, supabase])
+  }, [slug, user, anonDb])
 
   useEffect(() => {
     if (!series || !chapters.length) return
@@ -99,7 +99,7 @@ export default function ReaderPage() {
     setChapterViews(ch.views ?? 0)
     anonDb.from('comments').select('*, profiles!comments_user_id_fkey(display_name, handle, avatar_url)').eq('chapter_id', ch.id).order('created_at', { ascending: false })
       .then(({ data }: any) => setComments(data ?? []))
-    ;(anonDb as any).from('chapters').update({ views: (ch.views ?? 0) + 1 }).eq('id', ch.id).then(() => {
+    ;const _wc = createWriteClient(); if (_wc) (_wc as any).from('chapters').update({ views: (ch.views ?? 0) + 1 }).eq('id', ch.id).then(() => {
       setChapterViews(v => v + 1)
       setChapters(prev => prev.map(c => c.id === ch.id ? { ...c, views: (c.views ?? 0) + 1 } : c))
     })
@@ -139,14 +139,14 @@ export default function ReaderPage() {
   async function toggleLike() {
     if (!user || !series) { show('Sign in to like!'); return }
     if (liked) {
-      const { error } = await supabase.from('likes').delete().eq('user_id', user.id).eq('series_id', series.id)
+      const { error } = await (createWriteClient() as any).from('likes').delete().eq('user_id', user.id).eq('series_id', series.id)
       if (error) { show('Error: ' + error.message); return }
-      await supabase.from('series').update({ total_likes: Math.max(0, (series.total_likes ?? 1) - 1) }).eq('id', series.id)
+      await (createWriteClient() as any).from('series').update({ total_likes: Math.max(0, (series.total_likes ?? 1) - 1) }).eq('id', series.id)
       setSeries((s: any) => ({ ...s, total_likes: Math.max(0, (s.total_likes ?? 1) - 1) })); setLiked(false); show('Like removed')
     } else {
-      const { error } = await supabase.from('likes').insert({ user_id: user.id, series_id: series.id })
+      const { error } = await (createWriteClient() as any).from('likes').insert({ user_id: user.id, series_id: series.id })
       if (error) { show('Error: ' + error.message); return }
-      await supabase.from('series').update({ total_likes: (series.total_likes ?? 0) + 1 }).eq('id', series.id)
+      await (createWriteClient() as any).from('series').update({ total_likes: (series.total_likes ?? 0) + 1 }).eq('id', series.id)
       setSeries((s: any) => ({ ...s, total_likes: (s.total_likes ?? 0) + 1 })); setLiked(true); show('Liked!')
     }
   }
@@ -154,11 +154,11 @@ export default function ReaderPage() {
   async function toggleFav() {
     if (!user || !series) { show('Sign in to favorite!'); return }
     if (favorited) {
-      const { error } = await supabase.from('favorites').delete().eq('user_id', user.id).eq('series_id', series.id)
+      const { error } = await (createWriteClient() as any).from('favorites').delete().eq('user_id', user.id).eq('series_id', series.id)
       if (error) { show('Error: ' + error.message); return }
       setFavorited(false); show('Removed from Favorites')
     } else {
-      const { error } = await supabase.from('favorites').insert({ user_id: user.id, series_id: series.id })
+      const { error } = await (createWriteClient() as any).from('favorites').insert({ user_id: user.id, series_id: series.id })
       if (error) { show('Error: ' + error.message); return }
       setFavorited(true); show('Added to Favorites!')
     }
@@ -168,11 +168,11 @@ export default function ReaderPage() {
     if (!user || !series) { show('Sign in to follow!'); return }
     if (user.id === series.author_id) { show("Can't follow yourself"); return }
     if (isFollowing) {
-      const { error } = await supabase.from('follows').delete().eq('follower_id', user.id).eq('following_id', series.author_id)
+      const { error } = await (createWriteClient() as any).from('follows').delete().eq('follower_id', user.id).eq('following_id', series.author_id)
       if (error) { show('Error: ' + error.message); return }
       setIsFollowing(false); show('Unfollowed')
     } else {
-      const { error } = await supabase.from('follows').insert({ follower_id: user.id, following_id: series.author_id })
+      const { error } = await (createWriteClient() as any).from('follows').insert({ follower_id: user.id, following_id: series.author_id })
       if (error) { show('Error: ' + error.message); return }
       setIsFollowing(true); show('Following!')
     }
@@ -183,7 +183,7 @@ export default function ReaderPage() {
     const text = parentId ? replyText : (isSeries ? seriesCommentText : commentText)
     if (!text.trim()) { show('Write something first!'); return }
     const ch = chapters.find(c => c.chapter_number === currentCh)
-    const { data, error } = await supabase.from('comments').insert({
+    const { data, error } = await (createWriteClient() as any).from('comments').insert({
       user_id: user.id, body: text.trim(), series_id: series.id,
       chapter_id: isSeries ? null : ch?.id || null,
       parent_id: parentId || null,
@@ -199,7 +199,7 @@ export default function ReaderPage() {
 
   async function editComment(id: string, isSeries: boolean) {
     if (!editText.trim()) return
-    const { error } = await supabase.from('comments').update({ body: editText.trim(), edited_at: new Date().toISOString() }).eq('id', id)
+    const { error } = await (createWriteClient() as any).from('comments').update({ body: editText.trim(), edited_at: new Date().toISOString() }).eq('id', id)
     if (error) { show('Edit failed: ' + error.message); return }
     const updater = (prev: any[]) => prev.map(c => c.id === id ? { ...c, body: editText.trim(), edited_at: new Date().toISOString() } : c)
     if (isSeries) setSeriesComments(updater); else setComments(updater)
@@ -208,7 +208,7 @@ export default function ReaderPage() {
 
   async function deleteComment(id: string, isSeries: boolean) {
     if (!confirm('Delete this comment?')) return
-    await supabase.from('comments').delete().eq('id', id)
+    await (createWriteClient() as any).from('comments').delete().eq('id', id)
     if (isSeries) setSeriesComments(prev => prev.filter(c => c.id !== id))
     else setComments(prev => prev.filter(c => c.id !== id))
     show('Comment deleted')
@@ -222,9 +222,9 @@ export default function ReaderPage() {
     const updater = (prev: any[]) => prev.map(x => x.id === commentId ? { ...x, likes_count: newCount } : x)
     setComments(updater); setSeriesComments(updater)
     if (isLiked) {
-      await supabase.from('comment_likes').delete().eq('user_id', user.id).eq('comment_id', commentId)
+      await (createWriteClient() as any).from('comment_likes').delete().eq('user_id', user.id).eq('comment_id', commentId)
     } else {
-      await supabase.from('comment_likes').insert({ user_id: user.id, comment_id: commentId })
+      await (createWriteClient() as any).from('comment_likes').insert({ user_id: user.id, comment_id: commentId })
     }
   }
 

@@ -5,9 +5,8 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useToast } from '@/components/Toast'
 import { useAuth } from '@/contexts/AuthContext'
-import { createClient } from '@/lib/supabase/client'
+import { createWriteClient } from '@/lib/supabase/write'
 import { createAnonClient } from '@/lib/supabase/anon'
-import { createClient as createRawClient } from '@supabase/supabase-js'
 
 const MAX_FILE_GALLERY = 10 * 1024 * 1024   // 10MB per file (multi)
 const MAX_SINGLE_GALLERY = 5 * 1024 * 1024  // 5MB for single image
@@ -19,7 +18,6 @@ export default function EditGalleryPage() {
   const { show } = useToast()
   const { user } = useAuth()
   const id = params.id as string
-  const supabase = useMemo(() => createClient(), [])
   const anonDb = useMemo(() => createAnonClient(), [])
   const thumbRef = useRef<HTMLInputElement>(null)
   const addImgRef = useRef<HTMLInputElement>(null)
@@ -41,48 +39,6 @@ export default function EditGalleryPage() {
   // Thumbnail (albums only)
   const [thumbPreview, setThumbPreview] = useState<string | null>(null)
   const [newThumbFile, setNewThumbFile] = useState<File | null>(null)
-
-  // ─── Cookie-based write client (bypasses singleton lock issues) ──
-  function getWriteTools() {
-    const url = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
-    const ref = url.match(/\/\/([^.]+)\./)?.[1] || ''
-    const cookieName = `sb-${ref}-auth-token`
-    const cookies = document.cookie.split(';').map(c => c.trim())
-    const chunks: { idx: number; val: string }[] = []
-    for (const c of cookies) {
-      const eq = c.indexOf('=')
-      if (eq < 0) continue
-      const name = c.slice(0, eq)
-      const val = c.slice(eq + 1)
-      if (name === cookieName) chunks.push({ idx: -1, val })
-      else if (name.startsWith(cookieName + '.')) {
-        const i = parseInt(name.split('.').pop()!)
-        if (!isNaN(i)) chunks.push({ idx: i, val })
-      }
-    }
-    if (chunks.length === 0) throw new Error('Not logged in — please sign in and try again')
-    chunks.sort((a, b) => a.idx - b.idx)
-    let raw = chunks.map(c => decodeURIComponent(c.val)).join('')
-    if (raw.startsWith('base64-')) raw = atob(raw.slice(7))
-    const session = JSON.parse(raw)
-    const token = session?.access_token
-    if (!token) throw new Error('Session expired — please refresh the page')
-    const db: any = createRawClient(url, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
-      global: { headers: { Authorization: `Bearer ${token}` } },
-      auth: { persistSession: false, autoRefreshToken: false },
-    })
-    return { token, db }
-  }
-
-  async function uploadFileToR2(file: File, path: string): Promise<string> {
-    const fd = new FormData()
-    fd.append('file', file)
-    fd.append('path', path)
-    const res = await fetch('/api/upload', { method: 'POST', body: fd })
-    const json = await res.json()
-    if (!res.ok || json.error) throw new Error(json.error || 'Upload failed')
-    return json.url
-  }
 
   useEffect(() => {
     async function load() {
@@ -150,6 +106,7 @@ export default function EditGalleryPage() {
     const totalImages = existingImages.length + newImageFiles.length
     if (totalImages === 0) { show('At least one image is required'); return }
 
+    // Size validation on new files only
     const newTotalSize = newImageFiles.reduce((s, f) => s + f.size, 0)
     if (totalImages === 1 && newImageFiles.length === 1 && newImageFiles[0].size > MAX_SINGLE_GALLERY) {
       show('Single image must be under 5MB'); return
@@ -159,43 +116,58 @@ export default function EditGalleryPage() {
     }
 
     setSaving(true)
-    try {
-      const { db } = getWriteTools()
 
-      let thumbnailUrl = item.thumbnail_url
-      if (newThumbFile) {
-        const path = `gallery/${user.id}/thumb_${Date.now()}.webp`
-        thumbnailUrl = await uploadFileToR2(newThumbFile, path)
-      }
-      if (totalImages === 1) thumbnailUrl = null
+    // Upload thumbnail if changed
+    let thumbnailUrl = item.thumbnail_url
+    if (newThumbFile) {
+      const path = `gallery/${user.id}/thumb_${Date.now()}.webp`
+      try {
+        const fd = new FormData()
+        fd.append('file', newThumbFile)
+        fd.append('path', path)
+        const res = await fetch('/api/upload', { method: 'POST', body: fd })
+        const json = await res.json()
+        if (!res.ok || json.error) { show('Thumbnail upload failed: ' + (json.error || 'Unknown error')); setSaving(false); return }
+        thumbnailUrl = json.url
+      } catch (e: any) { show('Thumbnail upload failed: ' + e.message); setSaving(false); return }
+    }
+    // If album switched to single image, clear thumbnail
+    if (totalImages === 1) thumbnailUrl = null
 
-      const uploadedUrls: string[] = []
-      for (let i = 0; i < newImageFiles.length; i++) {
-        const file = newImageFiles[i]
-        const path = `gallery/${user.id}/${Date.now()}_${i}.webp`
-        show(`Uploading image ${i + 1}/${newImageFiles.length}...`)
-        const url = await uploadFileToR2(file, path)
-        uploadedUrls.push(url)
-      }
+    // Upload new image files
+    const uploadedUrls: string[] = []
+    for (let i = 0; i < newImageFiles.length; i++) {
+      const file = newImageFiles[i]
+      const path = `gallery/${user.id}/${Date.now()}_${i}.webp`
+      show(`Uploading image ${i + 1}/${newImageFiles.length}...`)
+      try {
+        const fd = new FormData()
+        fd.append('file', file)
+        fd.append('path', path)
+        const res = await fetch('/api/upload', { method: 'POST', body: fd })
+        const json = await res.json()
+        if (!res.ok || json.error) { show(`Image ${i + 1} failed: ${json.error || 'Upload error'}`); setSaving(false); return }
+        uploadedUrls.push(json.url)
+      } catch (e: any) { show(`Image ${i + 1} failed: ${e.message}`); setSaving(false); return }
+    }
 
-      const finalImages = [...existingImages, ...uploadedUrls]
+    const finalImages = [...existingImages, ...uploadedUrls]
 
-      const { error } = await db.from('gallery').update({
-        title: title.trim(),
-        description: desc || null,
-        is_mature: isMature,
-        reading_mode: readingMode,
-        image_urls: finalImages,
-        thumbnail_url: thumbnailUrl,
-      }).eq('id', id)
+    const { error } = await (createWriteClient() as any).from('gallery').update({
+      title: title.trim(),
+      description: desc || null,
+      is_mature: isMature,
+      reading_mode: readingMode,
+      image_urls: finalImages,
+      thumbnail_url: thumbnailUrl,
+    }).eq('id', id)
 
-      if (error) { show('Save failed: ' + error.message); setSaving(false); return }
-      setItem((p: any) => ({ ...p, title: title.trim(), description: desc || null, is_mature: isMature, reading_mode: readingMode, image_urls: finalImages, thumbnail_url: thumbnailUrl }))
-      setExistingImages(finalImages)
-      setNewImageFiles([])
-      setNewThumbFile(null)
-      show('Changes saved!')
-    } catch (e: any) { show('Save failed: ' + e.message) }
+    if (error) { show('Save failed: ' + error.message); setSaving(false); return }
+    setItem((p: any) => ({ ...p, title: title.trim(), description: desc || null, is_mature: isMature, reading_mode: readingMode, image_urls: finalImages, thumbnail_url: thumbnailUrl }))
+    setExistingImages(finalImages)
+    setNewImageFiles([])
+    setNewThumbFile(null)
+    show('Changes saved!')
     setSaving(false)
   }
 
@@ -204,12 +176,9 @@ export default function EditGalleryPage() {
     if (!item) return
     if (!confirm('Delete this gallery item permanently?')) return
     if (!confirm('This cannot be undone. Are you sure?')) return
-    try {
-      const { db } = getWriteTools()
-      await db.from('gallery').delete().eq('id', id)
-      show('Gallery item deleted')
-      router.push('/profile')
-    } catch (e: any) { show('Delete failed: ' + e.message) }
+    await (createWriteClient() as any).from('gallery').delete().eq('id', id)
+    show('Gallery item deleted')
+    router.push('/profile')
   }
 
   if (loading) return <div className="min-h-screen"><LoadingSpinner /></div>

@@ -9,7 +9,7 @@ const R2_PUBLIC_URL = "https://pub-6d31092e1f8446afba2712c91fc6ff8d.r2.dev";
  * Extract access token from Supabase auth cookies.
  * @supabase/ssr stores the session JSON in cookies named
  * `sb-{ref}-auth-token` (or chunked: `.0`, `.1`, …).
- * We reassemble and parse — zero Supabase client, zero network calls.
+ * Values are prefixed with `base64-` and base64-encoded.
  */
 function getTokenFromCookies(request: NextRequest): string | null {
   try {
@@ -19,10 +19,8 @@ function getTokenFromCookies(request: NextRequest): string | null {
     );
     if (authCookies.length === 0) return null;
 
-    // Derive base name (without chunk suffix)
     const baseName = authCookies[0].name.replace(/\.\d+$/, "");
 
-    // Collect & sort chunks
     const chunks = all
       .filter((c) => c.name === baseName || c.name.startsWith(baseName + "."))
       .sort((a, b) => {
@@ -50,7 +48,6 @@ function getUserIdFromJwt(token: string): string | null {
       atob(parts[1].replace(/-/g, "+").replace(/_/g, "/"))
     );
     if (!payload.sub) return null;
-    // Allow 60s grace for clock skew
     if (payload.exp && payload.exp < Math.floor(Date.now() / 1000) - 60) {
       return null;
     }
@@ -61,9 +58,8 @@ function getUserIdFromJwt(token: string): string | null {
 }
 
 export async function POST(request: NextRequest) {
-  // ── Auth: read JWT from cookie or Authorization header ──────
-  let token = request.headers.get("Authorization")?.replace("Bearer ", "") || null;
-  if (!token) token = getTokenFromCookies(request);
+  // ── Auth: read JWT from cookie ─────────────────────────────
+  const token = getTokenFromCookies(request);
   if (!token || !getUserIdFromJwt(token)) {
     return NextResponse.json(
       { error: "Not authenticated — please refresh the page and try again" },
