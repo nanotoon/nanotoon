@@ -70,18 +70,20 @@ export default function ReaderPage() {
         const { data: sc } = await anonDb.from('comments').select('*, profiles!comments_user_id_fkey(display_name, handle, avatar_url)').eq('series_id', s.id).is('chapter_id', null).order('created_at', { ascending: false }) as { data: any[] | null }
         if (!c) setSeriesComments(sc ?? [])
         if (user) {
-          const wc = createWriteClient()
-          if (wc) {
-            const uid = getAuthUserId()!
+          const uid = getAuthUserId()
+          if (uid) {
             const [lk, fv, fw, cl] = await Promise.all([
-              (wc as any).from('likes').select('*').eq('user_id', uid).eq('series_id', s.id).maybeSingle(),
-              (wc as any).from('favorites').select('*').eq('user_id', uid).eq('series_id', s.id).maybeSingle(),
-              (wc as any).from('follows').select('*').eq('follower_id', uid).eq('following_id', s.author_id).maybeSingle(),
-              (wc as any).from('comment_likes').select('comment_id').eq('user_id', uid),
-            ])
+              anonDb.from('likes').select('*').eq('user_id', uid).eq('series_id', s.id).maybeSingle(),
+              anonDb.from('favorites').select('*').eq('user_id', uid).eq('series_id', s.id).maybeSingle(),
+              anonDb.from('follows').select('*').eq('follower_id', uid).eq('following_id', s.author_id).maybeSingle(),
+              anonDb.from('comment_likes').select('comment_id').eq('user_id', uid),
+            ]) as any[]
             if (!c) { setLiked(!!lk.data); setFavorited(!!fv.data); setIsFollowing(!!fw.data); setLikedComments(new Set((cl.data ?? []).map((x: any) => x.comment_id))) }
           }
         }
+        // Read real like count from likes table (series.total_likes can be stale)
+        const { count: realLikes } = await anonDb.from('likes').select('*', { count: 'exact', head: true }).eq('series_id', s.id) as any
+        if (!c && realLikes != null) setSeries((p: any) => p ? { ...p, total_likes: realLikes } : p)
         if (!viewIncremented.current) {
           viewIncremented.current = true
           const wc = createWriteClient()
@@ -143,30 +145,36 @@ export default function ReaderPage() {
   async function toggleLike() {
     if (!user || !series) { show('Sign in to like!'); return }
     const uid = getAuthUserId()
-    if (!uid) { show('Sign in to like!'); return }
+    const wc = createWriteClient()
+    if (!uid || !wc) { show('Sign in to like!'); return }
     if (liked) {
-      const { error } = await (createWriteClient() as any).from('likes').delete().eq('user_id', uid).eq('series_id', series.id)
+      const { error } = await (wc as any).from('likes').delete().eq('user_id', uid).eq('series_id', series.id)
       if (error) { show('Error: ' + error.message); return }
-      await (createWriteClient() as any).from('series').update({ total_likes: Math.max(0, (series.total_likes ?? 1) - 1) }).eq('id', series.id)
-      setSeries((s: any) => ({ ...s, total_likes: Math.max(0, (s.total_likes ?? 1) - 1) })); setLiked(false); show('Like removed')
+      setLiked(false)
+      const { count } = await anonDb.from('likes').select('*', { count: 'exact', head: true }).eq('series_id', series.id) as any
+      setSeries((s: any) => ({ ...s, total_likes: count ?? Math.max(0, (s.total_likes ?? 1) - 1) }))
+      show('Like removed')
     } else {
-      const { error } = await (createWriteClient() as any).from('likes').insert({ user_id: uid, series_id: series.id })
+      const { error } = await (wc as any).from('likes').insert({ user_id: uid, series_id: series.id })
       if (error) { show('Error: ' + error.message); return }
-      await (createWriteClient() as any).from('series').update({ total_likes: (series.total_likes ?? 0) + 1 }).eq('id', series.id)
-      setSeries((s: any) => ({ ...s, total_likes: (s.total_likes ?? 0) + 1 })); setLiked(true); show('Liked!')
+      setLiked(true)
+      const { count } = await anonDb.from('likes').select('*', { count: 'exact', head: true }).eq('series_id', series.id) as any
+      setSeries((s: any) => ({ ...s, total_likes: count ?? (s.total_likes ?? 0) + 1 }))
+      show('Liked!')
     }
   }
 
   async function toggleFav() {
     if (!user || !series) { show('Sign in to favorite!'); return }
     const uid = getAuthUserId()
-    if (!uid) { show('Sign in to favorite!'); return }
+    const wc = createWriteClient()
+    if (!uid || !wc) { show('Sign in to favorite!'); return }
     if (favorited) {
-      const { error } = await (createWriteClient() as any).from('favorites').delete().eq('user_id', uid).eq('series_id', series.id)
+      const { error } = await (wc as any).from('favorites').delete().eq('user_id', uid).eq('series_id', series.id)
       if (error) { show('Error: ' + error.message); return }
       setFavorited(false); show('Removed from Favorites')
     } else {
-      const { error } = await (createWriteClient() as any).from('favorites').insert({ user_id: uid, series_id: series.id })
+      const { error } = await (wc as any).from('favorites').insert({ user_id: uid, series_id: series.id })
       if (error) { show('Error: ' + error.message); return }
       setFavorited(true); show('Added to Favorites!')
     }
@@ -175,14 +183,15 @@ export default function ReaderPage() {
   async function toggleFollow() {
     if (!user || !series) { show('Sign in to follow!'); return }
     const uid = getAuthUserId()
-    if (!uid) { show('Sign in to follow!'); return }
+    const wc = createWriteClient()
+    if (!uid || !wc) { show('Sign in to follow!'); return }
     if (uid === series.author_id) { show("Can't follow yourself"); return }
     if (isFollowing) {
-      const { error } = await (createWriteClient() as any).from('follows').delete().eq('follower_id', uid).eq('following_id', series.author_id)
+      const { error } = await (wc as any).from('follows').delete().eq('follower_id', uid).eq('following_id', series.author_id)
       if (error) { show('Error: ' + error.message); return }
       setIsFollowing(false); show('Unfollowed')
     } else {
-      const { error } = await (createWriteClient() as any).from('follows').insert({ follower_id: uid, following_id: series.author_id })
+      const { error } = await (wc as any).from('follows').insert({ follower_id: uid, following_id: series.author_id })
       if (error) { show('Error: ' + error.message); return }
       setIsFollowing(true); show('Following!')
     }
@@ -191,11 +200,12 @@ export default function ReaderPage() {
   async function postComment(isSeries: boolean, parentId?: string) {
     if (!user || !series) { show('Sign in to comment!'); return }
     const uid = getAuthUserId()
-    if (!uid) { show('Sign in to comment!'); return }
+    const wc = createWriteClient()
+    if (!uid || !wc) { show('Sign in to comment!'); return }
     const text = parentId ? replyText : (isSeries ? seriesCommentText : commentText)
     if (!text.trim()) { show('Write something first!'); return }
     const ch = chapters.find(c => c.chapter_number === currentCh)
-    const { data, error } = await (createWriteClient() as any).from('comments').insert({
+    const { data, error } = await (wc as any).from('comments').insert({
       user_id: uid, body: text.trim(), series_id: series.id,
       chapter_id: isSeries ? null : ch?.id || null,
       parent_id: parentId || null,

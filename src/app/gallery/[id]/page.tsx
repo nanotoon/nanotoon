@@ -47,18 +47,20 @@ export default function GalleryDetailPage() {
           const { data: cmts } = await anonDb.from('gallery_comments').select('*, profiles!gallery_comments_user_id_fkey(display_name, handle, avatar_url)').eq('gallery_id', id).order('created_at', { ascending: false }) as { data: any[] | null }
           if (!c) setComments(cmts ?? [])
           if (user) {
-            const wc = createWriteClient()
-            if (wc) {
-              const uid = getAuthUserId()!
+            const uid = getAuthUserId()
+            if (uid) {
               const [lk, fw, fv, cl] = await Promise.all([
-                (wc as any).from('gallery_likes').select('*').eq('user_id', uid).eq('gallery_id', id).maybeSingle(),
-                (wc as any).from('follows').select('*').eq('follower_id', uid).eq('following_id', data.author_id).maybeSingle(),
-                (wc as any).from('gallery_favorites').select('*').eq('user_id', uid).eq('gallery_id', id).maybeSingle(),
-                (wc as any).from('comment_likes').select('comment_id').eq('user_id', uid),
+                anonDb.from('gallery_likes').select('*').eq('user_id', uid).eq('gallery_id', id).maybeSingle(),
+                anonDb.from('follows').select('*').eq('follower_id', uid).eq('following_id', data.author_id).maybeSingle(),
+                anonDb.from('gallery_favorites').select('*').eq('user_id', uid).eq('gallery_id', id).maybeSingle(),
+                anonDb.from('comment_likes').select('comment_id').eq('user_id', uid),
               ]) as any[]
               if (!c) { setLiked(!!lk.data); setIsFollowing(!!fw.data); setFavorited(!!fv.data); setLikedComments(new Set((cl.data ?? []).map((x: any) => x.comment_id))) }
             }
           }
+          // Read real like count from gallery_likes table
+          const { count: realLikes } = await anonDb.from('gallery_likes').select('*', { count: 'exact', head: true }).eq('gallery_id', id) as any
+          if (!c && realLikes != null) setItem((p: any) => p ? { ...p, total_likes: realLikes } : p)
         }
       } catch { /* swallow */ }
       clearTimeout(timeout)
@@ -101,28 +103,36 @@ export default function GalleryDetailPage() {
   async function toggleLike() {
     if (!user||!item){show('Sign in!');return}
     const uid = getAuthUserId()
-    if (!uid){show('Sign in!');return}
+    const wc = createWriteClient()
+    if (!uid||!wc){show('Sign in!');return}
     if (liked) {
-      const {error} = await (createWriteClient() as any).from('gallery_likes').delete().eq('user_id',uid).eq('gallery_id',id)
+      const {error} = await (wc as any).from('gallery_likes').delete().eq('user_id',uid).eq('gallery_id',id)
       if (error){show('Error: '+error.message);return}
-      setItem((p:any)=>({...p,total_likes:Math.max(0,(p.total_likes??1)-1)})); setLiked(false); show('Removed')
+      setLiked(false)
+      const { count } = await anonDb.from('gallery_likes').select('*', { count: 'exact', head: true }).eq('gallery_id', id) as any
+      setItem((p:any)=>({...p,total_likes:count??Math.max(0,(p.total_likes??1)-1)}))
+      show('Removed')
     } else {
-      const {error} = await (createWriteClient() as any).from('gallery_likes').insert({user_id:uid,gallery_id:id})
+      const {error} = await (wc as any).from('gallery_likes').insert({user_id:uid,gallery_id:id})
       if (error){show('Error: '+error.message);return}
-      setItem((p:any)=>({...p,total_likes:(p.total_likes??0)+1})); setLiked(true); show('Liked!')
+      setLiked(true)
+      const { count } = await anonDb.from('gallery_likes').select('*', { count: 'exact', head: true }).eq('gallery_id', id) as any
+      setItem((p:any)=>({...p,total_likes:count??(p.total_likes??0)+1}))
+      show('Liked!')
     }
   }
 
   async function toggleFavorite() {
     if (!user||!item){show('Sign in!');return}
     const uid = getAuthUserId()
-    if (!uid){show('Sign in!');return}
+    const wc = createWriteClient()
+    if (!uid||!wc){show('Sign in!');return}
     if (favorited) {
-      const {error} = await (createWriteClient() as any).from('gallery_favorites').delete().eq('user_id',uid).eq('gallery_id',id)
+      const {error} = await (wc as any).from('gallery_favorites').delete().eq('user_id',uid).eq('gallery_id',id)
       if (error){show('Error: '+error.message);return}
       setFavorited(false); show('Removed from Favorites')
     } else {
-      const {error} = await (createWriteClient() as any).from('gallery_favorites').insert({user_id:uid,gallery_id:id})
+      const {error} = await (wc as any).from('gallery_favorites').insert({user_id:uid,gallery_id:id})
       if (error){show('Error: '+error.message);return}
       setFavorited(true); show('Added to Favorites!')
     }
@@ -131,14 +141,15 @@ export default function GalleryDetailPage() {
   async function toggleFollow() {
     if (!user||!item){show('Sign in!');return}
     const uid = getAuthUserId()
-    if (!uid){show('Sign in!');return}
+    const wc = createWriteClient()
+    if (!uid||!wc){show('Sign in!');return}
     if (uid === item.author_id){show("Can't follow yourself");return}
     if (isFollowing) {
-      const {error} = await (createWriteClient() as any).from('follows').delete().eq('follower_id',uid).eq('following_id',item.author_id)
+      const {error} = await (wc as any).from('follows').delete().eq('follower_id',uid).eq('following_id',item.author_id)
       if (error){show('Error: '+error.message);return}
       setIsFollowing(false); show('Unfollowed')
     } else {
-      const {error} = await (createWriteClient() as any).from('follows').insert({follower_id:uid,following_id:item.author_id})
+      const {error} = await (wc as any).from('follows').insert({follower_id:uid,following_id:item.author_id})
       if (error){show('Error: '+error.message);return}
       setIsFollowing(true); show('Following!')
     }
@@ -147,9 +158,10 @@ export default function GalleryDetailPage() {
   async function postComment() {
     if (!user){show('Sign in!');return}
     const uid = getAuthUserId()
-    if (!uid){show('Sign in!');return}
+    const wc = createWriteClient()
+    if (!uid||!wc){show('Sign in!');return}
     if(!cText.trim()){show('Write something!');return}
-    const {data,error}=await (createWriteClient() as any).from('gallery_comments').insert({user_id:uid,gallery_id:id,body:cText.trim()}).select('*, profiles!gallery_comments_user_id_fkey(display_name, handle, avatar_url)').single()
+    const {data,error}=await (wc as any).from('gallery_comments').insert({user_id:uid,gallery_id:id,body:cText.trim()}).select('*, profiles!gallery_comments_user_id_fkey(display_name, handle, avatar_url)').single()
     if (error){show('Failed: '+error.message);return}
     if (data){setComments(p=>[data,...p]);setCText('');show('Posted!')}
   }
