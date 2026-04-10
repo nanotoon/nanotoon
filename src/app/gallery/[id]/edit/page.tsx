@@ -42,32 +42,42 @@ export default function EditGalleryPage() {
   const [thumbPreview, setThumbPreview] = useState<string | null>(null)
   const [newThumbFile, setNewThumbFile] = useState<File | null>(null)
 
-  // Helper: get a fresh write client + token that won't hang from shared locks
-  async function getWriteTools() {
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session?.access_token) throw new Error('Not logged in — please sign in again')
-    const token = session.access_token
-    const db = createRawClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        global: { headers: { Authorization: `Bearer ${token}` } },
-        auth: { persistSession: false, autoRefreshToken: false },
+  // ─── Cookie-based write client (bypasses singleton lock issues) ──
+  function getWriteTools() {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
+    const ref = url.match(/\/\/([^.]+)\./)?.[1] || ''
+    const cookieName = `sb-${ref}-auth-token`
+    const cookies = document.cookie.split(';').map(c => c.trim())
+    const chunks: { idx: number; val: string }[] = []
+    for (const c of cookies) {
+      const eq = c.indexOf('=')
+      if (eq < 0) continue
+      const name = c.slice(0, eq)
+      const val = c.slice(eq + 1)
+      if (name === cookieName) chunks.push({ idx: -1, val })
+      else if (name.startsWith(cookieName + '.')) {
+        const i = parseInt(name.split('.').pop()!)
+        if (!isNaN(i)) chunks.push({ idx: i, val })
       }
-    ) as any
+    }
+    if (chunks.length === 0) throw new Error('Not logged in — please sign in and try again')
+    chunks.sort((a, b) => a.idx - b.idx)
+    const raw = chunks.map(c => decodeURIComponent(c.val)).join('')
+    const session = JSON.parse(raw)
+    const token = session?.access_token
+    if (!token) throw new Error('Session expired — please refresh the page')
+    const db: any = createRawClient(url, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
+      global: { headers: { Authorization: `Bearer ${token}` } },
+      auth: { persistSession: false, autoRefreshToken: false },
+    })
     return { token, db }
   }
 
-  // Helper: upload to R2 with explicit auth token
-  async function uploadFileToR2(file: File, path: string, token: string): Promise<string> {
+  async function uploadFileToR2(file: File, path: string): Promise<string> {
     const fd = new FormData()
     fd.append('file', file)
     fd.append('path', path)
-    const res = await fetch('/api/upload', {
-      method: 'POST',
-      body: fd,
-      headers: { 'Authorization': `Bearer ${token}` },
-    })
+    const res = await fetch('/api/upload', { method: 'POST', body: fd })
     const json = await res.json()
     if (!res.ok || json.error) throw new Error(json.error || 'Upload failed')
     return json.url
@@ -139,7 +149,6 @@ export default function EditGalleryPage() {
     const totalImages = existingImages.length + newImageFiles.length
     if (totalImages === 0) { show('At least one image is required'); return }
 
-    // Size validation on new files only
     const newTotalSize = newImageFiles.reduce((s, f) => s + f.size, 0)
     if (totalImages === 1 && newImageFiles.length === 1 && newImageFiles[0].size > MAX_SINGLE_GALLERY) {
       show('Single image must be under 5MB'); return
@@ -149,26 +158,22 @@ export default function EditGalleryPage() {
     }
 
     setSaving(true)
-
     try {
-      const { token, db } = await getWriteTools()
+      const { db } = getWriteTools()
 
-      // Upload thumbnail if changed
       let thumbnailUrl = item.thumbnail_url
       if (newThumbFile) {
         const path = `gallery/${user.id}/thumb_${Date.now()}.webp`
-        thumbnailUrl = await uploadFileToR2(newThumbFile, path, token)
+        thumbnailUrl = await uploadFileToR2(newThumbFile, path)
       }
-      // If album switched to single image, clear thumbnail
       if (totalImages === 1) thumbnailUrl = null
 
-      // Upload new image files
       const uploadedUrls: string[] = []
       for (let i = 0; i < newImageFiles.length; i++) {
         const file = newImageFiles[i]
         const path = `gallery/${user.id}/${Date.now()}_${i}.webp`
         show(`Uploading image ${i + 1}/${newImageFiles.length}...`)
-        const url = await uploadFileToR2(file, path, token)
+        const url = await uploadFileToR2(file, path)
         uploadedUrls.push(url)
       }
 
@@ -199,7 +204,7 @@ export default function EditGalleryPage() {
     if (!confirm('Delete this gallery item permanently?')) return
     if (!confirm('This cannot be undone. Are you sure?')) return
     try {
-      const { db } = await getWriteTools()
+      const { db } = getWriteTools()
       await db.from('gallery').delete().eq('id', id)
       show('Gallery item deleted')
       router.push('/profile')

@@ -34,18 +34,55 @@ async function compressImage(file: File, maxWidth: number, quality: number): Pro
 }
 
 // ─── R2 upload helper ────────────────────────────────────────
-async function uploadToR2(file: File, path: string, accessToken: string): Promise<string> {
+async function uploadToR2(file: File, path: string): Promise<string> {
   const fd = new FormData()
   fd.append('file', file)
   fd.append('path', path)
-  const res = await fetch('/api/upload', {
-    method: 'POST',
-    body: fd,
-    headers: { 'Authorization': `Bearer ${accessToken}` },
-  })
+  const res = await fetch('/api/upload', { method: 'POST', body: fd })
   const json = await res.json()
   if (!res.ok || json.error) throw new Error(json.error || 'Upload failed')
   return json.url
+}
+
+// ─── Read access token directly from cookie (bypasses singleton locks) ──
+function getAccessTokenFromCookie(): string {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
+  const ref = url.match(/\/\/([^.]+)\./)?.[1] || ''
+  const cookieName = `sb-${ref}-auth-token`
+  const cookies = document.cookie.split(';').map(c => c.trim())
+
+  const chunks: { idx: number; val: string }[] = []
+  for (const c of cookies) {
+    const eq = c.indexOf('=')
+    if (eq < 0) continue
+    const name = c.slice(0, eq)
+    const val = c.slice(eq + 1)
+    if (name === cookieName) chunks.push({ idx: -1, val })
+    else if (name.startsWith(cookieName + '.')) {
+      const i = parseInt(name.split('.').pop()!)
+      if (!isNaN(i)) chunks.push({ idx: i, val })
+    }
+  }
+  if (chunks.length === 0) throw new Error('Not logged in — please sign in and try again')
+
+  chunks.sort((a, b) => a.idx - b.idx)
+  const raw = chunks.map(c => decodeURIComponent(c.val)).join('')
+  const session = JSON.parse(raw)
+  const token = session?.access_token
+  if (!token) throw new Error('Session expired — please refresh the page')
+  return token
+}
+
+// ─── Create a fresh Supabase client with explicit token (no locks) ──
+function makeWriteClient(token: string): any {
+  return createRawClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      global: { headers: { Authorization: `Bearer ${token}` } },
+      auth: { persistSession: false, autoRefreshToken: false },
+    }
+  )
 }
 
 function MatureTip({ mobile }: { mobile: boolean }) {
@@ -177,27 +214,14 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
     if (uploadType === 'gallery' && totalSize > MAX_TOTAL_GALLERY) { setUploadError('Total images exceed 50MB'); onToast('Total images exceed 50MB'); return }
     setUploading(true); setUploadError(''); setProgress('Preparing...')
     try {
-      // Get access token from the browser auth client ONCE, before any writes.
-      // This runs in the browser so token refresh works normally here.
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session?.access_token) throw new Error('Not logged in — please sign in again')
-      const token = session.access_token
-
-      // Create a FRESH Supabase client with the token explicitly set.
-      // This avoids the shared singleton's internal lock state which can hang.
-      const writeDb = createRawClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-        {
-          global: { headers: { Authorization: `Bearer ${token}` } },
-          auth: { persistSession: false, autoRefreshToken: false },
-        }
-      ) as any
+      // Read token straight from cookie — never touches the singleton auth client
+      const token = getAccessTokenFromCookie()
+      const writeDb = makeWriteClient(token)
 
       await ensureProfile(writeDb)
       setProgress('Starting upload...')
-      if (uploadType === 'gallery') await doGalleryUpload(token, writeDb)
-      else await doSeriesUpload(token, writeDb)
+      if (uploadType === 'gallery') await doGalleryUpload(writeDb)
+      else await doSeriesUpload(writeDb)
     } catch (err: any) {
       console.error('Upload error:', err)
       const msg = err?.message || 'Unexpected error'
@@ -206,7 +230,7 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
     setUploading(false)
   }
 
-  async function doSeriesUpload(token: string, writeDb: any) {
+  async function doSeriesUpload(writeDb: any) {
     let seriesId = selectedSeriesId
     if (mode === 'new') {
       setProgress('Creating series...')
@@ -216,7 +240,7 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
         const compressed = await compressImage(thumbFile, 800, 0.85)
         const path = 'thumbnails/' + user!.id + '/' + Date.now() + '.webp'
         try {
-          thumbnailUrl = await uploadToR2(compressed, path, token)
+          thumbnailUrl = await uploadToR2(compressed, path)
         } catch (e: any) {
           onToast('Thumbnail skipped: ' + e.message)
         }
@@ -235,7 +259,7 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
       const compressed = await compressImage(files[i], 800, 0.85)
       setProgress('Uploading page ' + (i + 1) + '/' + files.length + '...')
       const path = 'chapters/' + seriesId + '/' + chapterNumber + '/' + String(i + 1).padStart(3, '0') + '.webp'
-      const url = await uploadToR2(compressed, path, token)
+      const url = await uploadToR2(compressed, path)
       pageUrls.push(url)
     }
     setProgress('Saving chapter...')
@@ -248,21 +272,21 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
     onToast('Chapter published! 🎉'); onClose()
   }
 
-  async function doGalleryUpload(token: string, writeDb: any) {
+  async function doGalleryUpload(writeDb: any) {
     const imageUrls: string[] = []
     for (let i = 0; i < files.length; i++) {
       setProgress('Compressing image ' + (i + 1) + '/' + files.length + '...')
       const compressed = await compressImage(files[i], 9999, 0.85)
       setProgress('Uploading image ' + (i + 1) + '/' + files.length + '...')
       const path = 'gallery/' + user!.id + '/' + Date.now() + '_' + i + '.webp'
-      const url = await uploadToR2(compressed, path, token)
+      const url = await uploadToR2(compressed, path)
       imageUrls.push(url)
     }
     let thumbnailUrl: string | null = null
     if (files.length > 1 && thumbFile) {
       const compressed = await compressImage(thumbFile, 9999, 0.85)
       const path = 'gallery/' + user!.id + '/thumb_' + Date.now() + '.webp'
-      try { thumbnailUrl = await uploadToR2(compressed, path, token) } catch { /* skip */ }
+      try { thumbnailUrl = await uploadToR2(compressed, path) } catch { /* skip */ }
     }
     setProgress('Saving...')
     const { error } = await writeDb.from('gallery').insert({
