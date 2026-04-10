@@ -121,7 +121,17 @@ export default function EditSeriesPage() {
     if (!series) return
     if (!confirm('Delete this series and all its chapters?')) return
     if (!confirm('This cannot be undone. Are you sure?')) return
-    await (createWriteClient() as any).from('series').delete().eq('id', series.id)
+    const wc = createWriteClient()
+    if (!wc) { show('Not logged in'); return }
+    // Delete chapters first (FK constraint blocks series delete if chapters exist)
+    await (wc as any).from('chapters').delete().eq('series_id', series.id)
+    // Delete related data
+    await (wc as any).from('likes').delete().eq('series_id', series.id)
+    await (wc as any).from('favorites').delete().eq('series_id', series.id)
+    await (wc as any).from('comments').delete().eq('series_id', series.id)
+    // Now delete the series
+    const { error } = await (wc as any).from('series').delete().eq('id', series.id)
+    if (error) { show('Delete failed: ' + error.message); return }
     show('Series deleted')
     router.push('/profile')
   }
