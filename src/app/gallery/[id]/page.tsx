@@ -47,14 +47,17 @@ export default function GalleryDetailPage() {
           const { data: cmts } = await anonDb.from('gallery_comments').select('*, profiles!gallery_comments_user_id_fkey(display_name, handle, avatar_url)').eq('gallery_id', id).order('created_at', { ascending: false }) as { data: any[] | null }
           if (!c) setComments(cmts ?? [])
           if (user) {
-            const uid = getAuthUserId() || user.id
-            const [lk, fw, fv, cl] = await Promise.all([
-              anonDb.from('gallery_likes').select('*').eq('user_id', uid).eq('gallery_id', id).maybeSingle(),
-              anonDb.from('follows').select('*').eq('follower_id', uid).eq('following_id', data.author_id).maybeSingle(),
-              anonDb.from('gallery_favorites').select('*').eq('user_id', uid).eq('gallery_id', id).maybeSingle(),
-              anonDb.from('comment_likes').select('comment_id').eq('user_id', uid),
-            ]) as any[]
-            if (!c) { setLiked(!!lk.data); setIsFollowing(!!fw.data); setFavorited(!!fv.data); setLikedComments(new Set((cl.data ?? []).map((x: any) => x.comment_id))) }
+            const wc = createWriteClient()
+            if (wc) {
+              const uid = getAuthUserId()!
+              const [lk, fw, fv, cl] = await Promise.all([
+                (wc as any).from('gallery_likes').select('*').eq('user_id', uid).eq('gallery_id', id).maybeSingle(),
+                (wc as any).from('follows').select('*').eq('follower_id', uid).eq('following_id', data.author_id).maybeSingle(),
+                (wc as any).from('gallery_favorites').select('*').eq('user_id', uid).eq('gallery_id', id).maybeSingle(),
+                (wc as any).from('comment_likes').select('comment_id').eq('user_id', uid),
+              ]) as any[]
+              if (!c) { setLiked(!!lk.data); setIsFollowing(!!fw.data); setFavorited(!!fv.data); setLikedComments(new Set((cl.data ?? []).map((x: any) => x.comment_id))) }
+            }
           }
         }
       } catch { /* swallow */ }

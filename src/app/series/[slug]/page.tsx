@@ -70,14 +70,17 @@ export default function ReaderPage() {
         const { data: sc } = await anonDb.from('comments').select('*, profiles!comments_user_id_fkey(display_name, handle, avatar_url)').eq('series_id', s.id).is('chapter_id', null).order('created_at', { ascending: false }) as { data: any[] | null }
         if (!c) setSeriesComments(sc ?? [])
         if (user) {
-          const uid = getAuthUserId() || user.id
-          const [lk, fv, fw, cl] = await Promise.all([
-            anonDb.from('likes').select('*').eq('user_id', uid).eq('series_id', s.id).maybeSingle(),
-            anonDb.from('favorites').select('*').eq('user_id', uid).eq('series_id', s.id).maybeSingle(),
-            anonDb.from('follows').select('*').eq('follower_id', uid).eq('following_id', s.author_id).maybeSingle(),
-            anonDb.from('comment_likes').select('comment_id').eq('user_id', uid),
-          ])
-          if (!c) { setLiked(!!lk.data); setFavorited(!!fv.data); setIsFollowing(!!fw.data); setLikedComments(new Set((cl.data ?? []).map((x: any) => x.comment_id))) }
+          const wc = createWriteClient()
+          if (wc) {
+            const uid = getAuthUserId()!
+            const [lk, fv, fw, cl] = await Promise.all([
+              (wc as any).from('likes').select('*').eq('user_id', uid).eq('series_id', s.id).maybeSingle(),
+              (wc as any).from('favorites').select('*').eq('user_id', uid).eq('series_id', s.id).maybeSingle(),
+              (wc as any).from('follows').select('*').eq('follower_id', uid).eq('following_id', s.author_id).maybeSingle(),
+              (wc as any).from('comment_likes').select('comment_id').eq('user_id', uid),
+            ])
+            if (!c) { setLiked(!!lk.data); setFavorited(!!fv.data); setIsFollowing(!!fw.data); setLikedComments(new Set((cl.data ?? []).map((x: any) => x.comment_id))) }
+          }
         }
         if (!viewIncremented.current) {
           viewIncremented.current = true
