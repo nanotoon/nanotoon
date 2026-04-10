@@ -67,7 +67,8 @@ export default function EditSeriesPage() {
     }
     if (chunks.length === 0) throw new Error('Not logged in — please sign in and try again')
     chunks.sort((a, b) => a.idx - b.idx)
-    const raw = chunks.map(c => decodeURIComponent(c.val)).join('')
+    let raw = chunks.map(c => decodeURIComponent(c.val)).join('')
+    if (raw.startsWith('base64-')) raw = atob(raw.slice(7))
     const session = JSON.parse(raw)
     const token = session?.access_token
     if (!token) throw new Error('Session expired — please refresh the page')

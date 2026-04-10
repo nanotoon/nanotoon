@@ -33,7 +33,8 @@ function getTokenFromCookies(request: NextRequest): string | null {
         return idx(a.name) - idx(b.name);
       });
 
-    const raw = chunks.map((c) => c.value).join("");
+    let raw = chunks.map((c) => c.value).join("");
+    if (raw.startsWith("base64-")) raw = atob(raw.slice(7));
     const session = JSON.parse(raw);
     return session?.access_token || null;
   } catch {
