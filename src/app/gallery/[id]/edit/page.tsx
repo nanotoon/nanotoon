@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useToast } from '@/components/Toast'
 import { useAuth } from '@/contexts/AuthContext'
-import { createWriteClient } from '@/lib/supabase/write'
+import { createWriteClient, getAuthUserId } from '@/lib/supabase/write'
 import { createAnonClient } from '@/lib/supabase/anon'
 
 const MAX_FILE_GALLERY = 10 * 1024 * 1024   // 10MB per file (multi)

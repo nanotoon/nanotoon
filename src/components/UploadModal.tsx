@@ -2,7 +2,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { GENRES_ALL } from '@/data/mock'
 import { useAuth } from '@/contexts/AuthContext'
-import { createWriteClient } from '@/lib/supabase/write'
+import { createWriteClient, getAuthUserId } from '@/lib/supabase/write'
 import { createAnonClient } from '@/lib/supabase/anon'
 
 const MAX_FILE = 10 * 1024 * 1024
@@ -95,7 +95,7 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
   useEffect(() => {
     if (!user) return
     setLoadingSeries(true)
-    anonDb.from('series').select('*').eq('author_id', user.id).order('created_at', { ascending: false })
+    anonDb.from('series').select('*').eq('author_id', getAuthUserId() || user.id).order('created_at', { ascending: false })
       .then(({ data }: any) => { setMySeries(data ?? []); setLoadingSeries(false) })
   }, [user, anonDb])
 
@@ -145,17 +145,18 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
   }
 
   async function ensureProfile() {
-    if (!user) throw new Error('Not logged in')
+    const uid = getAuthUserId()
+    if (!uid) throw new Error('Not logged in')
     try {
-      const { data, error } = await anonDb.from('profiles').select('id').eq('id', user.id).maybeSingle() as { data: any; error: any }
+      const { data, error } = await anonDb.from('profiles').select('id').eq('id', uid).maybeSingle() as { data: any; error: any }
       if (error) console.warn('Profile select error (will try insert):', error.message)
       if (data) return
     } catch (err: any) {
       console.warn('Profile select failed (will try insert):', err?.message)
     }
-    const dn = user.user_metadata?.display_name || user.user_metadata?.full_name || user.email?.split('@')[0] || 'Creator'
-    const h = (user.user_metadata?.handle || user.email?.split('@')[0]?.replace(/[^a-zA-Z0-9_]/g, '') || 'user_' + user.id.slice(0, 8)).toLowerCase()
-    const { error } = await (createWriteClient() as any).from('profiles').insert({ id: user.id, display_name: dn, handle: h })
+    const dn = user?.user_metadata?.display_name || user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Creator'
+    const h = (user?.user_metadata?.handle || user?.email?.split('@')[0]?.replace(/[^a-zA-Z0-9_]/g, '') || 'user_' + uid.slice(0, 8)).toLowerCase()
+    const { error } = await (createWriteClient() as any).from('profiles').insert({ id: uid, display_name: dn, handle: h })
     if (error && !error.message.includes('duplicate') && !error.code?.includes('23505')) {
       throw new Error('Profile setup failed: ' + error.message)
     }
@@ -191,7 +192,7 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
       if (thumbFile) {
         setProgress('Compressing thumbnail...')
         const compressed = await compressImage(thumbFile, 800, 0.85)
-        const path = 'thumbnails/' + user!.id + '/' + Date.now() + '.webp'
+        const path = 'thumbnails/' + getAuthUserId()! + '/' + Date.now() + '.webp'
         try {
           thumbnailUrl = await uploadToR2(compressed, path)
         } catch (e: any) {
@@ -201,7 +202,7 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
       const slug = seriesTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') + '-' + Date.now().toString(36)
       const { data: ns, error: sErr } = await (createWriteClient() as any).from('series').insert({
         title: seriesTitle, slug, description: desc || null, format: format!, genres: Array.from(genres),
-        thumbnail_url: thumbnailUrl, author_id: user!.id, reading_mode: readingMode,
+        thumbnail_url: thumbnailUrl, author_id: getAuthUserId()!, reading_mode: readingMode,
       }).select().single()
       if (sErr) throw new Error(sErr.message || 'Series creation failed')
       seriesId = ns.id
@@ -231,20 +232,20 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
       setProgress('Compressing image ' + (i + 1) + '/' + files.length + '...')
       const compressed = await compressImage(files[i], 9999, 0.85)
       setProgress('Uploading image ' + (i + 1) + '/' + files.length + '...')
-      const path = 'gallery/' + user!.id + '/' + Date.now() + '_' + i + '.webp'
+      const path = 'gallery/' + getAuthUserId()! + '/' + Date.now() + '_' + i + '.webp'
       const url = await uploadToR2(compressed, path)
       imageUrls.push(url)
     }
     let thumbnailUrl: string | null = null
     if (files.length > 1 && thumbFile) {
       const compressed = await compressImage(thumbFile, 9999, 0.85)
-      const path = 'gallery/' + user!.id + '/thumb_' + Date.now() + '.webp'
+      const path = 'gallery/' + getAuthUserId()! + '/thumb_' + Date.now() + '.webp'
       try { thumbnailUrl = await uploadToR2(compressed, path) } catch { /* skip */ }
     }
     setProgress('Saving...')
     const { error } = await (createWriteClient() as any).from('gallery').insert({
       title: gTitle.trim(), description: gDesc || null, image_urls: imageUrls,
-      thumbnail_url: thumbnailUrl, author_id: user!.id, is_mature: gMature,
+      thumbnail_url: thumbnailUrl, author_id: getAuthUserId()!, is_mature: gMature,
       tags: gTags ? gTags.split(',').map((t: string) => t.trim()).filter(Boolean) : [],
       reading_mode: gReadMode,
     })

@@ -3,14 +3,10 @@
 import { createClient } from "@supabase/supabase-js";
 
 /**
- * Read the Supabase access token directly from document.cookie.
- * This bypasses the singleton browser client's internal navigator.locks
- * which can deadlock when a token refresh is pending on Cloudflare Workers.
- *
- * @supabase/ssr stores session as `base64-<json>` in cookies named
- * `sb-<ref>-auth-token` (possibly chunked: `.0`, `.1`, …).
+ * Read the Supabase session from document.cookie.
+ * @supabase/ssr stores it as `base64-<json>` in `sb-<ref>-auth-token` cookies.
  */
-export function getAccessToken(): string | null {
+function readSessionFromCookie(): { access_token: string; user_id: string } | null {
   try {
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
     const ref = url.match(/\/\/([^.]+)\./)?.[1] || "";
@@ -35,28 +31,41 @@ export function getAccessToken(): string | null {
     let raw = chunks.map((c) => decodeURIComponent(c.val)).join("");
     if (raw.startsWith("base64-")) raw = atob(raw.slice(7));
     const session = JSON.parse(raw);
-    return session?.access_token || null;
+    const token = session?.access_token;
+    if (!token) return null;
+
+    // Decode JWT to get user ID (sub claim)
+    const parts = token.split(".");
+    const payload = JSON.parse(atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")));
+    if (!payload.sub) return null;
+
+    return { access_token: token, user_id: payload.sub };
   } catch {
     return null;
   }
 }
 
 /**
+ * Get the current user's ID from the auth cookie.
+ * Always in sync with createWriteClient()'s token.
+ */
+export function getAuthUserId(): string | null {
+  return readSessionFromCookie()?.user_id ?? null;
+}
+
+/**
  * Create a fresh Supabase client with the access token from cookies.
- * This client has NO session management, NO locks, NO refresh — it just
- * sends the token as a Bearer header and does PostgREST calls.
- *
- * Returns null if no valid token is found.
+ * No session management, no locks, no refresh.
  */
 export function createWriteClient(): ReturnType<typeof createClient> | null {
-  const token = getAccessToken();
-  if (!token) return null;
+  const session = readSessionFromCookie();
+  if (!session) return null;
 
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
-      global: { headers: { Authorization: `Bearer ${token}` } },
+      global: { headers: { Authorization: `Bearer ${session.access_token}` } },
       auth: { persistSession: false, autoRefreshToken: false },
     }
   );
