@@ -353,6 +353,22 @@ export default function ReaderPage() {
   const panels = currentChData?.page_urls?.length ? currentChData.page_urls : null
   const isHorizontal = (currentChData?.reading_mode || series.reading_mode) === 'horizontal'
   const isRTL = isHorizontal && (currentChData?.reading_direction || series.reading_direction) === 'rtl'
+  const isAdmin = user?.email === 'nanotooncontact@gmail.com' && series.author_id !== user?.id
+
+  async function adminRemove() {
+    if (!confirm('Remove this series for policy violation? The owner will be notified by email.')) return
+    if (!confirm('This cannot be undone. Are you sure?')) return
+    await ensureFreshSession()
+    const res = await fetch('/api/admin-remove', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contentType: 'Series', contentId: series.id, contentTitle: series.title, authorId: series.author_id }),
+    })
+    const json = await res.json()
+    if (!res.ok) { show('Remove failed: ' + (json.error || 'Unknown error')); return }
+    show('Series removed. Owner notified by email.')
+    window.location.href = '/'
+  }
   const authorName = series.profiles?.display_name || 'Unknown'
   const topLevelComments = comments.filter(c => !c.parent_id)
   const topLevelSeriesComments = seriesComments.filter(c => !c.parent_id)
@@ -417,6 +433,11 @@ export default function ReaderPage() {
                 Edit
               </Link>
             )}
+            {isAdmin && (
+              <button onClick={adminRemove} className="flex items-center gap-2 px-4 py-2 rounded-lg border border-red-500/30 cursor-pointer text-sm text-[#f87171] hover:bg-red-500/10 bg-transparent">
+                Remove
+              </button>
+            )}
           </div>
         </div>
 
@@ -457,6 +478,11 @@ export default function ReaderPage() {
                   <svg className="w-[7px] h-[7px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                   Edit
                 </Link>
+              )}
+              {isAdmin && (
+                <button onClick={adminRemove} className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-lg border border-red-500/30 cursor-pointer text-[0.6rem] text-[#f87171] hover:bg-red-500/10 bg-transparent">
+                  Remove
+                </button>
               )}
             </div>
           </div>

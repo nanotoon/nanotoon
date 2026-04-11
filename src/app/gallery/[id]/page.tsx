@@ -221,6 +221,22 @@ export default function GalleryDetailPage() {
   const isAlbum = imgs.length > 1
   const isSingleImage = imgs.length === 1
   const isRTL = rm === 'horizontal' && (item.reading_direction) === 'rtl'
+  const isAdmin = user?.email === 'nanotooncontact@gmail.com' && item.author_id !== user?.id
+
+  async function adminRemove() {
+    if (!confirm('Remove this gallery item for policy violation? The owner will be notified by email.')) return
+    if (!confirm('This cannot be undone. Are you sure?')) return
+    await ensureFreshSession()
+    const res = await fetch('/api/admin-remove', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contentType: 'Gallery', contentId: id, contentTitle: item.title, authorId: item.author_id }),
+    })
+    const json = await res.json()
+    if (!res.ok) { show('Remove failed: ' + (json.error || 'Unknown error')); return }
+    show('Gallery item removed. Owner notified by email.')
+    window.location.href = '/gallery'
+  }
 
   return (
     <div className="min-h-screen bg-black">
@@ -280,6 +296,11 @@ export default function GalleryDetailPage() {
                 Edit
               </Link>
             )}
+            {isAdmin && (
+              <button onClick={adminRemove} className="flex items-center gap-2 px-4 py-2 rounded-lg border border-red-500/30 cursor-pointer text-sm text-[#f87171] hover:bg-red-500/10 bg-transparent">
+                Remove
+              </button>
+            )}
           </div>
         </div>
 
@@ -319,6 +340,11 @@ export default function GalleryDetailPage() {
                   Edit
                 </Link>
               </>)}
+              {isAdmin && (
+                <button onClick={adminRemove} className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-lg border border-red-500/30 cursor-pointer text-[0.6rem] text-[#f87171] hover:bg-red-500/10 bg-transparent">
+                  Remove
+                </button>
+              )}
             </div>
           </div>
 
