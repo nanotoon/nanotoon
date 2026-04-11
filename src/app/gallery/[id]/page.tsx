@@ -30,8 +30,33 @@ export default function GalleryDetailPage() {
   const [comments, setComments] = useState<any[]>([])
   const [cText, setCText] = useState('')
   const [likedComments, setLikedComments] = useState<Set<string>>(new Set())
+  const [headerHidden, setHeaderHidden] = useState(false)
 
   const touchStart = useRef<{ x: number; y: number } | null>(null)
+
+  // Webtoon mode: hide header on scroll down, show on scroll to top
+  useEffect(() => {
+    const isWebtoon = item && (item.image_urls?.length > 1) && (item.reading_mode || 'horizontal') === 'webtoon'
+    if (!isWebtoon) {
+      setHeaderHidden(false)
+      document.documentElement.classList.remove('webtoon-scrolled')
+      return
+    }
+    const onScroll = () => {
+      if (window.scrollY > 50) {
+        setHeaderHidden(true)
+        document.documentElement.classList.add('webtoon-scrolled')
+      } else {
+        setHeaderHidden(false)
+        document.documentElement.classList.remove('webtoon-scrolled')
+      }
+    }
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => {
+      window.removeEventListener('scroll', onScroll)
+      document.documentElement.classList.remove('webtoon-scrolled')
+    }
+  }, [item])
 
   useEffect(() => {
     let c = false
@@ -192,7 +217,7 @@ export default function GalleryDetailPage() {
   return (
     <div className="min-h-screen bg-black">
       {/* ─── HEADER / FLOAT MENU ─────────────────────────────── */}
-      <div className="bg-[#09090b]/95 backdrop-blur border-b border-[#27272a] sticky top-0 z-20">
+      <div className="bg-[#09090b]/95 backdrop-blur border-b border-[#27272a] sticky top-0 z-20" style={{ transition: 'transform 0.3s ease', transform: headerHidden ? 'translateY(-100%)' : 'none' }}>
 
         {/* ══ DESKTOP LAYOUT (md and above) ══════════════════════ */}
         <div className="hidden md:flex gap-3 items-start p-4">
