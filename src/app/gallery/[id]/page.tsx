@@ -350,7 +350,7 @@ export default function GalleryDetailPage() {
             {imgs.length>0 && <img src={imgs[page]} className="w-full rounded-lg" alt="" />}
             {imgs.length>1 && <div className="flex flex-col items-center gap-2 mt-3">
               <div className="flex items-center justify-center gap-3">
-                <button onClick={()=>setPage(p=> isRTL ? Math.min(imgs.length-1,p+1) : Math.max(0,p-1))} disabled={isRTL ? page===imgs.length-1 : page===0} className={`px-4 py-2 border rounded-xl text-sm cursor-pointer bg-transparent ${(isRTL ? page===imgs.length-1 : page===0)?'border-[#27272a] text-[#3f3f46]':'border-[#3f3f46] text-[#a1a1aa] hover:border-[#a855f7]'}`}>◀ Prev</button>
+                <button onClick={()=>setPage(p=> isRTL ? Math.min(imgs.length-1,p+1) : Math.max(0,p-1))} disabled={isRTL ? page===imgs.length-1 : page===0} className={`w-[40px] h-[38px] border rounded-xl text-sm cursor-pointer bg-transparent flex items-center justify-center ${(isRTL ? page===imgs.length-1 : page===0)?'border-[#27272a] text-[#3f3f46]':'border-[#3f3f46] text-[#a1a1aa] hover:border-[#a855f7]'}`}>◀</button>
                 <button onClick={()=>{setFullscreenPage(page);setShowFullscreen(true)}}
                   title="Full Screen"
                   className="group relative w-[40px] h-[38px] border border-[#3f3f46] rounded-xl bg-transparent text-[#a1a1aa] cursor-pointer hover:border-[#a855f7] flex items-center justify-center">
@@ -362,7 +362,7 @@ export default function GalleryDetailPage() {
                   </svg>
                   <span className="absolute -top-8 left-1/2 -translate-x-1/2 px-2 py-1 bg-[#27272a] border border-[#3f3f46] rounded text-[0.65rem] text-[#e4e4e7] whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">Full Screen</span>
                 </button>
-                <button onClick={()=>setPage(p=> isRTL ? Math.max(0,p-1) : Math.min(imgs.length-1,p+1))} disabled={isRTL ? page===0 : page===imgs.length-1} className={`px-4 py-2 border rounded-xl text-sm cursor-pointer bg-transparent ${(isRTL ? page===0 : page===imgs.length-1)?'border-[#27272a] text-[#3f3f46]':'border-[#3f3f46] text-[#a1a1aa] hover:border-[#a855f7]'}`}>Next ▶</button>
+                <button onClick={()=>setPage(p=> isRTL ? Math.max(0,p-1) : Math.min(imgs.length-1,p+1))} disabled={isRTL ? page===0 : page===imgs.length-1} className={`w-[40px] h-[38px] border rounded-xl text-sm cursor-pointer bg-transparent flex items-center justify-center ${(isRTL ? page===0 : page===imgs.length-1)?'border-[#27272a] text-[#3f3f46]':'border-[#3f3f46] text-[#a1a1aa] hover:border-[#a855f7]'}`}>▶</button>
               </div>
               <span className="text-sm text-[#71717a]">{page+1}/{imgs.length}</span>
             </div>}

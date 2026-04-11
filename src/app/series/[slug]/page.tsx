@@ -31,6 +31,7 @@ export default function ReaderPage() {
   const [series, setSeries] = useState<any>(null)
   const [chapters, setChapters] = useState<any[]>([])
   const [currentCh, setCurrentCh] = useState(1)
+  const [currentPage, setCurrentPage] = useState(0)
   const [chapterViews, setChapterViews] = useState(0)
   const [liked, setLiked] = useState(false)
   const [favorited, setFavorited] = useState(false)
@@ -285,7 +286,7 @@ export default function ReaderPage() {
   }
 
   function switchChapter(ch: number) {
-    setPanelFade(true); setTimeout(() => { setCurrentCh(ch); setShowChapters(false); setPanelFade(false); show(`Chapter ${ch}`) }, 200)
+    setPanelFade(true); setTimeout(() => { setCurrentCh(ch); setCurrentPage(0); setShowChapters(false); setPanelFade(false); show(`Chapter ${ch}`) }, 200)
   }
 
   function CommentItem({ c, isSeries, isReply }: { c: any; isSeries: boolean; isReply?: boolean }) {
@@ -505,31 +506,61 @@ export default function ReaderPage() {
 
       {/* ─── Panels / Reader ─────────────────────────────────── */}
       <div className={`max-w-[800px] mx-auto p-1.5 md:p-3 transition-opacity duration-200 ${panelFade ? 'opacity-0' : 'opacity-100'}`}>
-        {panels ? panels.map((url: string, pi: number) => (
-          <img key={pi} src={url} loading={pi === 0 ? 'eager' : 'lazy'} className="w-full" style={{ marginTop: pi > 0 ? '-4px' : '0' }} alt={`Page ${pi+1}`} />
-        )) : <div className="w-full aspect-[3/4] flex items-center justify-center text-[#52525b] text-sm bg-[#18181b] rounded-xl">{maxCh === 0 ? 'No chapters yet' : 'No pages in this chapter'}</div>}
+        {panels ? (
+          isHorizontal ? (
+            /* ── Horizontal mode: one page at a time ── */
+            <div className="relative">
+              <img src={panels[currentPage]} className="w-full rounded-lg" alt={`Page ${currentPage+1}`} />
+              {panels.length > 1 && <div className="flex flex-col items-center gap-2 mt-3">
+                <div className="flex items-center justify-center gap-3">
+                  <button onClick={()=>setCurrentPage(p=> isRTL ? Math.min(panels.length-1,p+1) : Math.max(0,p-1))} disabled={isRTL ? currentPage===panels.length-1 : currentPage===0} className={`w-[40px] h-[38px] border rounded-xl text-sm cursor-pointer bg-transparent flex items-center justify-center ${(isRTL ? currentPage===panels.length-1 : currentPage===0)?'border-[#27272a] text-[#3f3f46]':'border-[#3f3f46] text-[#a1a1aa] hover:border-[#a855f7]'}`}>◀</button>
+                  <button onClick={()=>{setFullscreenPage(currentPage);setShowFullscreen(true)}}
+                    title="Full Screen"
+                    className="group relative w-[40px] h-[38px] border border-[#3f3f46] rounded-xl bg-transparent text-[#a1a1aa] cursor-pointer hover:border-[#a855f7] flex items-center justify-center">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <polyline points="15 3 21 3 21 9"/>
+                      <polyline points="9 21 3 21 3 15"/>
+                      <line x1="21" y1="3" x2="14" y2="10"/>
+                      <line x1="3" y1="21" x2="10" y2="14"/>
+                    </svg>
+                    <span className="absolute -top-8 left-1/2 -translate-x-1/2 px-2 py-1 bg-[#27272a] border border-[#3f3f46] rounded text-[0.65rem] text-[#e4e4e7] whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">Full Screen</span>
+                  </button>
+                  <button onClick={()=>setCurrentPage(p=> isRTL ? Math.max(0,p-1) : Math.min(panels.length-1,p+1))} disabled={isRTL ? currentPage===0 : currentPage===panels.length-1} className={`w-[40px] h-[38px] border rounded-xl text-sm cursor-pointer bg-transparent flex items-center justify-center ${(isRTL ? currentPage===0 : currentPage===panels.length-1)?'border-[#27272a] text-[#3f3f46]':'border-[#3f3f46] text-[#a1a1aa] hover:border-[#a855f7]'}`}>▶</button>
+                </div>
+                <span className="text-sm text-[#71717a]">{currentPage+1}/{panels.length}</span>
+              </div>}
+              {panels.length === 1 && (
+                <div className="flex justify-center mt-3">
+                  <button onClick={()=>{setFullscreenPage(0);setShowFullscreen(true)}}
+                    title="Full Screen"
+                    className="group relative w-[40px] h-[38px] border border-[#3f3f46] rounded-xl bg-transparent text-[#a1a1aa] cursor-pointer hover:border-[#a855f7] flex items-center justify-center">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <polyline points="15 3 21 3 21 9"/>
+                      <polyline points="9 21 3 21 3 15"/>
+                      <line x1="21" y1="3" x2="14" y2="10"/>
+                      <line x1="3" y1="21" x2="10" y2="14"/>
+                    </svg>
+                    <span className="absolute -top-8 left-1/2 -translate-x-1/2 px-2 py-1 bg-[#27272a] border border-[#3f3f46] rounded text-[0.65rem] text-[#e4e4e7] whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">Full Screen</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : (
+            /* ── Webtoon mode: all pages stacked ── */
+            panels.map((url: string, pi: number) => (
+              <img key={pi} src={url} loading={pi === 0 ? 'eager' : 'lazy'} className="w-full" style={{ marginTop: pi > 0 ? '-4px' : '0' }} alt={`Page ${pi+1}`} />
+            ))
+          )
+        ) : <div className="w-full aspect-[3/4] flex items-center justify-center text-[#52525b] text-sm bg-[#18181b] rounded-xl">{maxCh === 0 ? 'No chapters yet' : 'No pages in this chapter'}</div>}
       </div>
 
-      {/* ─── Chapter nav + Fullscreen button ──────────────────── */}
+      {/* ─── Chapter nav ─────────────────────────────────────── */}
       {maxCh > 0 && (
         <div className="max-w-[800px] mx-auto mt-4 flex gap-2 px-3">
           <button onClick={() => { if (currentCh > 1) switchChapter(currentCh - 1); else show('First chapter!') }}
-            className="flex-1 py-2.5 border border-[#3f3f46] rounded-xl bg-transparent text-[#a1a1aa] cursor-pointer text-sm hover:border-[#a855f7] flex items-center justify-center gap-1">Prev</button>
+            className="flex-1 py-2.5 border border-[#3f3f46] rounded-xl bg-transparent text-[#a1a1aa] cursor-pointer text-sm hover:border-[#a855f7] flex items-center justify-center gap-1">Prev Chapter</button>
           <button onClick={() => { if (currentCh < maxCh) switchChapter(currentCh + 1); else show("You're caught up!") }}
-            className="flex-1 py-2.5 border border-[#3f3f46] rounded-xl bg-transparent text-[#a1a1aa] cursor-pointer text-sm hover:border-[#a855f7] flex items-center justify-center gap-1">Next</button>
-          {isHorizontal && panels && (
-            <button onClick={() => { setFullscreenPage(0); setShowFullscreen(true) }}
-              title="Full Screen"
-              className="group relative w-[44px] shrink-0 py-2.5 border border-[#3f3f46] rounded-xl bg-transparent text-[#a1a1aa] cursor-pointer hover:border-[#a855f7] flex items-center justify-center">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <polyline points="15 3 21 3 21 9"/>
-                <polyline points="9 21 3 21 3 15"/>
-                <line x1="21" y1="3" x2="14" y2="10"/>
-                <line x1="3" y1="21" x2="10" y2="14"/>
-              </svg>
-              <span className="absolute -top-8 left-1/2 -translate-x-1/2 px-2 py-1 bg-[#27272a] border border-[#3f3f46] rounded text-[0.65rem] text-[#e4e4e7] whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">Full Screen</span>
-            </button>
-          )}
+            className="flex-1 py-2.5 border border-[#3f3f46] rounded-xl bg-transparent text-[#a1a1aa] cursor-pointer text-sm hover:border-[#a855f7] flex items-center justify-center gap-1">Next Chapter</button>
         </div>
       )}
 
