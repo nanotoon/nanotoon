@@ -74,6 +74,7 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
   const [genres, setGenres] = useState<Set<string>>(new Set())
   const [desc, setDesc] = useState('')
   const [readingMode, setReadingMode] = useState<'webtoon' | 'horizontal'>('webtoon')
+  const [readingDirection, setReadingDirection] = useState<'ltr' | 'rtl'>('ltr')
   const [files, setFiles] = useState<File[]>([])
   const [thumbFile, setThumbFile] = useState<File | null>(null)
   const [thumbPreview, setThumbPreview] = useState<string | null>(null)
@@ -89,6 +90,7 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
   const [gTags, setGTags] = useState('')
   const [dragging, setDragging] = useState(false)
   const [gReadMode, setGReadMode] = useState<'horizontal' | 'webtoon'>('horizontal')
+  const [gReadDir, setGReadDir] = useState<'ltr' | 'rtl'>('ltr')
 
   useEffect(() => { const c = () => setIsMobile(window.innerWidth < 768); c(); window.addEventListener('resize', c); return () => window.removeEventListener('resize', c) }, [])
 
@@ -203,7 +205,7 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
       const slug = seriesTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') + '-' + Date.now().toString(36)
       const { data: ns, error: sErr } = await (createWriteClient() as any).from('series').insert({
         title: seriesTitle, slug, description: desc || null, format: format!, genres: Array.from(genres),
-        thumbnail_url: thumbnailUrl, author_id: getAuthUserId()!, reading_mode: readingMode,
+        thumbnail_url: thumbnailUrl, author_id: getAuthUserId()!, reading_mode: readingMode, reading_direction: readingMode === 'horizontal' ? readingDirection : 'ltr',
       }).select().single()
       if (sErr) throw new Error(sErr.message || 'Series creation failed')
       seriesId = ns.id
@@ -220,7 +222,7 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
     setProgress('Saving chapter...')
     const { error: chErr } = await (createWriteClient() as any).from('chapters').insert({
       series_id: seriesId, chapter_number: chapterNumber, title: chapterTitle, rating: rating!,
-      page_urls: pageUrls.length > 0 ? pageUrls : null, reading_mode: readingMode,
+      page_urls: pageUrls.length > 0 ? pageUrls : null, reading_mode: readingMode, reading_direction: readingMode === 'horizontal' ? readingDirection : 'ltr',
     })
     if (chErr) throw new Error(chErr.message || 'Chapter save failed')
     await (createWriteClient() as any).from('series').update({ updated_at: new Date().toISOString() }).eq('id', seriesId)
@@ -248,7 +250,7 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
       title: gTitle.trim(), description: gDesc || null, image_urls: imageUrls,
       thumbnail_url: thumbnailUrl, author_id: getAuthUserId()!, is_mature: gMature,
       tags: gTags ? gTags.split(',').map((t: string) => t.trim()).filter(Boolean) : [],
-      reading_mode: gReadMode,
+      reading_mode: gReadMode, reading_direction: gReadMode === 'horizontal' ? gReadDir : 'ltr',
     })
     if (error) throw new Error(error.message)
     onToast('Gallery published! 🎉'); onClose(); setTimeout(() => window.location.reload(), 600)
@@ -292,7 +294,7 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
             {loadingSeries ? <p className="text-[#52525b] text-xs py-4 text-center">Loading...</p> : mySeries.length === 0 ? <p className="text-[#52525b] text-xs py-4 text-center">No series yet.</p> : (
               <div className="flex flex-col gap-2 mb-3.5">
                 {mySeries.map((s: any) => (
-                  <div key={s.id} onClick={() => { setSelectedSeriesId(s.id); setReadingMode(s.reading_mode || 'webtoon'); setTimeout(() => setStep('form'), 150) }}
+                  <div key={s.id} onClick={() => { setSelectedSeriesId(s.id); setReadingMode(s.reading_mode || 'webtoon'); setReadingDirection(s.reading_direction || 'ltr'); setTimeout(() => setStep('form'), 150) }}
                     className={'p-2.5 border rounded-lg cursor-pointer flex items-center gap-2.5 ' + (selectedSeriesId === s.id ? 'border-[#a855f7] bg-purple-500/10' : 'border-[#3f3f46] hover:border-[#a855f7]')}>
                     {s.thumbnail_url ? <img src={s.thumbnail_url} className="w-8 h-12 rounded-md shrink-0 object-cover" alt={s.title} /> : <div className="w-8 h-12 rounded-md shrink-0 bg-[#27272a] flex items-center justify-center text-lg">📖</div>}
                     <div><div className="font-medium text-sm">{s.title}</div><div className="text-[0.71rem] text-[#71717a]">{s.format}</div></div>
@@ -314,6 +316,10 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
             {files.length > 1 && (<div><label className="block text-xs text-[#71717a] mb-1.5">Reading Mode</label><div className="flex gap-1.5">
               <button onClick={() => setGReadMode('horizontal')} className={'px-3 py-1.5 rounded-lg cursor-pointer text-xs font-medium border ' + (gReadMode === 'horizontal' ? 'border-[#a855f7] text-[#c084fc] bg-purple-500/10' : 'border-[#3f3f46] text-[#71717a] bg-transparent')}>◀▶ Horizontal</button>
               <button onClick={() => setGReadMode('webtoon')} className={'px-3 py-1.5 rounded-lg cursor-pointer text-xs font-medium border ' + (gReadMode === 'webtoon' ? 'border-[#a855f7] text-[#c084fc] bg-purple-500/10' : 'border-[#3f3f46] text-[#71717a] bg-transparent')}>▼ Webtoon</button>
+            </div></div>)}
+            {files.length > 1 && gReadMode === 'horizontal' && (<div><label className="block text-xs text-[#71717a] mb-1.5">Reading Direction</label><div className="flex gap-1.5">
+              <button onClick={() => setGReadDir('ltr')} className={'px-3 py-1.5 rounded-lg cursor-pointer text-xs font-medium border ' + (gReadDir === 'ltr' ? 'border-[#a855f7] text-[#c084fc] bg-purple-500/10' : 'border-[#3f3f46] text-[#71717a] bg-transparent')}>→ Left to Right</button>
+              <button onClick={() => setGReadDir('rtl')} className={'px-3 py-1.5 rounded-lg cursor-pointer text-xs font-medium border ' + (gReadDir === 'rtl' ? 'border-[#a855f7] text-[#c084fc] bg-purple-500/10' : 'border-[#3f3f46] text-[#71717a] bg-transparent')}>← Right to Left</button>
             </div></div>)}
             {files.length > 1 && (<div><label className="block text-xs text-[#71717a] mb-1.5">Album Thumbnail</label><div className="flex items-center gap-3"><div className="w-12 h-[72px] rounded-lg bg-[#27272a] border border-dashed border-[#3f3f46] flex items-center justify-center shrink-0 overflow-hidden">{thumbPreview ? <img src={thumbPreview} className="w-full h-full object-cover" alt="" /> : <span className="text-[#52525b] text-lg">📷</span>}</div><button type="button" onClick={() => thumbRef.current?.click()} className="px-3 py-1.5 border border-[#3f3f46] rounded-lg bg-transparent text-[#c084fc] cursor-pointer text-xs">{thumbPreview ? 'Change' : 'Choose'}</button><input ref={thumbRef} type="file" className="hidden" accept=".jpg,.jpeg,.png,.webp" onChange={handleThumb} /></div></div>)}
             <div><label className="block text-xs text-[#71717a] mb-1.5">Images <span className="text-[#52525b]">(max 10MB each, 50MB total)</span></label>
@@ -353,6 +359,10 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
               <button onClick={() => setReadingMode('webtoon')} className={'px-3 py-1.5 rounded-lg cursor-pointer text-xs font-medium border ' + (readingMode === 'webtoon' ? 'border-[#a855f7] text-[#c084fc] bg-purple-500/10' : 'border-[#3f3f46] text-[#71717a] bg-transparent')}>▼ Webtoon</button>
               <button onClick={() => setReadingMode('horizontal')} className={'px-3 py-1.5 rounded-lg cursor-pointer text-xs font-medium border ' + (readingMode === 'horizontal' ? 'border-[#a855f7] text-[#c084fc] bg-purple-500/10' : 'border-[#3f3f46] text-[#71717a] bg-transparent')}>◀▶ Horizontal</button>
             </div></div>
+            {readingMode === 'horizontal' && (<div><label className="block text-xs text-[#71717a] mb-1.5">Reading Direction</label><div className="flex gap-1.5">
+              <button onClick={() => setReadingDirection('ltr')} className={'px-3 py-1.5 rounded-lg cursor-pointer text-xs font-medium border ' + (readingDirection === 'ltr' ? 'border-[#a855f7] text-[#c084fc] bg-purple-500/10' : 'border-[#3f3f46] text-[#71717a] bg-transparent')}>→ Left to Right</button>
+              <button onClick={() => setReadingDirection('rtl')} className={'px-3 py-1.5 rounded-lg cursor-pointer text-xs font-medium border ' + (readingDirection === 'rtl' ? 'border-[#a855f7] text-[#c084fc] bg-purple-500/10' : 'border-[#3f3f46] text-[#71717a] bg-transparent')}>← Right to Left</button>
+            </div></div>)}
             {mode === 'new' && (<div className="border-t border-[#27272a] pt-3"><label className="block text-xs text-[#71717a] mb-1.5">Genres <span className="text-[#52525b]">(up to 3)</span></label>
               <div className="flex gap-1 flex-wrap mb-3">{GENRES_ALL.map(g => (<button key={g} onClick={() => { const n = new Set(genres); if (n.has(g)) n.delete(g); else if (n.size < 3) n.add(g); else return; setGenres(n) }} className={'px-2.5 py-1 rounded-full text-[0.73rem] cursor-pointer border ' + (genres.has(g) ? 'border-[#a855f7] text-[#c084fc] bg-purple-500/10' : genres.size >= 3 ? 'border-[#27272a] text-[#3f3f46] bg-transparent cursor-not-allowed' : 'border-[#3f3f46] text-[#71717a] bg-transparent')}>{g}</button>))}</div>
               <label className="block text-xs text-[#71717a] mb-1">Description <span className="text-[#52525b]">(max 80 words)</span></label>

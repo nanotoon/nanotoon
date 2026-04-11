@@ -31,6 +31,7 @@ export default function EditGalleryPage() {
   const [desc, setDesc] = useState('')
   const [isMature, setIsMature] = useState(false)
   const [readingMode, setReadingMode] = useState('horizontal')
+  const [readingDirection, setReadingDirection] = useState<'ltr' | 'rtl'>('ltr')
 
   // Images
   const [existingImages, setExistingImages] = useState<string[]>([])
@@ -50,6 +51,7 @@ export default function EditGalleryPage() {
       setDesc(data.description || '')
       setIsMature(data.is_mature ?? false)
       setReadingMode(data.reading_mode || 'horizontal')
+      setReadingDirection(data.reading_direction || 'ltr')
       setExistingImages(data.image_urls || [])
       setThumbPreview(data.thumbnail_url || null)
       setLoading(false)
@@ -159,12 +161,13 @@ export default function EditGalleryPage() {
       description: desc || null,
       is_mature: isMature,
       reading_mode: readingMode,
+      reading_direction: readingMode === 'horizontal' ? readingDirection : 'ltr',
       image_urls: finalImages,
       thumbnail_url: thumbnailUrl,
     }).eq('id', id)
 
     if (error) { show('Save failed: ' + error.message); setSaving(false); return }
-    setItem((p: any) => ({ ...p, title: title.trim(), description: desc || null, is_mature: isMature, reading_mode: readingMode, image_urls: finalImages, thumbnail_url: thumbnailUrl }))
+    setItem((p: any) => ({ ...p, title: title.trim(), description: desc || null, is_mature: isMature, reading_mode: readingMode, reading_direction: readingMode === 'horizontal' ? readingDirection : 'ltr', image_urls: finalImages, thumbnail_url: thumbnailUrl }))
     setExistingImages(finalImages)
     setNewImageFiles([])
     setNewThumbFile(null)
@@ -248,6 +251,15 @@ export default function EditGalleryPage() {
             <div className="flex gap-1.5">
               <button onClick={() => setReadingMode('horizontal')} className={'px-3 py-1.5 rounded-lg cursor-pointer text-xs font-medium border ' + (readingMode === 'horizontal' ? 'border-[#a855f7] text-[#c084fc] bg-purple-500/10' : 'border-[#3f3f46] text-[#71717a] bg-transparent')}>◀▶ Horizontal</button>
               <button onClick={() => setReadingMode('webtoon')} className={'px-3 py-1.5 rounded-lg cursor-pointer text-xs font-medium border ' + (readingMode === 'webtoon' ? 'border-[#a855f7] text-[#c084fc] bg-purple-500/10' : 'border-[#3f3f46] text-[#71717a] bg-transparent')}>▼ Webtoon</button>
+            </div>
+          </div>
+        )}
+        {isAlbum && readingMode === 'horizontal' && (
+          <div>
+            <label className="block text-xs text-[#71717a] mb-1.5">Reading Direction</label>
+            <div className="flex gap-1.5">
+              <button onClick={() => setReadingDirection('ltr')} className={'px-3 py-1.5 rounded-lg cursor-pointer text-xs font-medium border ' + (readingDirection === 'ltr' ? 'border-[#a855f7] text-[#c084fc] bg-purple-500/10' : 'border-[#3f3f46] text-[#71717a] bg-transparent')}>→ Left to Right</button>
+              <button onClick={() => setReadingDirection('rtl')} className={'px-3 py-1.5 rounded-lg cursor-pointer text-xs font-medium border ' + (readingDirection === 'rtl' ? 'border-[#a855f7] text-[#c084fc] bg-purple-500/10' : 'border-[#3f3f46] text-[#71717a] bg-transparent')}>← Right to Left</button>
             </div>
           </div>
         )}

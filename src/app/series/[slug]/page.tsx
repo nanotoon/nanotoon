@@ -141,27 +141,29 @@ export default function ReaderPage() {
     if (!showFullscreen) return
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setShowFullscreen(false)
-      if (e.key === 'ArrowLeft') setFullscreenPage(p => Math.max(0, p - 1))
-      if (e.key === 'ArrowRight') {
-        const ch = chapters.find(c => c.chapter_number === currentCh)
-        const maxP = ch?.page_urls?.length ? ch.page_urls.length - 1 : 0
-        setFullscreenPage(p => Math.min(maxP, p + 1))
-      }
+      const ch = chapters.find(c => c.chapter_number === currentCh)
+      const maxP = ch?.page_urls?.length ? ch.page_urls.length - 1 : 0
+      const rtl = (ch?.reading_direction || series?.reading_direction) === 'rtl'
+      const prev = rtl ? 'ArrowRight' : 'ArrowLeft'
+      const next = rtl ? 'ArrowLeft' : 'ArrowRight'
+      if (e.key === prev) setFullscreenPage(p => Math.max(0, p - 1))
+      if (e.key === next) setFullscreenPage(p => Math.min(maxP, p + 1))
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [showFullscreen, currentCh, chapters])
+  }, [showFullscreen, currentCh, chapters, series])
 
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
     touchStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }
   }, [])
 
-  const handleTouchEnd = useCallback((e: React.TouchEvent, maxPages: number) => {
+  const handleTouchEnd = useCallback((e: React.TouchEvent, maxPages: number, rtl?: boolean) => {
     if (!touchStart.current) return
     const dx = e.changedTouches[0].clientX - touchStart.current.x
     const dy = e.changedTouches[0].clientY - touchStart.current.y
     if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 50) {
-      if (dx < 0) setFullscreenPage(p => Math.min(maxPages - 1, p + 1))
+      const goNext = rtl ? dx > 0 : dx < 0
+      if (goNext) setFullscreenPage(p => Math.min(maxPages - 1, p + 1))
       else setFullscreenPage(p => Math.max(0, p - 1))
     }
     touchStart.current = null
@@ -349,6 +351,7 @@ export default function ReaderPage() {
   const currentChData = chapters.find(c => c.chapter_number === currentCh)
   const panels = currentChData?.page_urls?.length ? currentChData.page_urls : null
   const isHorizontal = (currentChData?.reading_mode || series.reading_mode) === 'horizontal'
+  const isRTL = isHorizontal && (currentChData?.reading_direction || series.reading_direction) === 'rtl'
   const authorName = series.profiles?.display_name || 'Unknown'
   const topLevelComments = comments.filter(c => !c.parent_id)
   const topLevelSeriesComments = seriesComments.filter(c => !c.parent_id)
@@ -567,7 +570,7 @@ export default function ReaderPage() {
       {showFullscreen && panels && (
         <div className="fixed inset-0 bg-black z-[300] flex flex-col"
           onTouchStart={handleTouchStart}
-          onTouchEnd={(e) => handleTouchEnd(e, panels.length)}>
+          onTouchEnd={(e) => handleTouchEnd(e, panels.length, isRTL)}>
           <div className="flex items-center justify-between p-3 shrink-0">
             <span className="text-[#71717a] text-xs md:text-sm">{fullscreenPage + 1} / {panels.length}</span>
             <button onClick={() => setShowFullscreen(false)} className="w-8 h-8 md:w-9 md:h-9 flex items-center justify-center bg-[#27272a] border border-[#3f3f46] rounded-lg text-[#a1a1aa] cursor-pointer hover:border-[#a855f7]">
@@ -575,15 +578,15 @@ export default function ReaderPage() {
             </button>
           </div>
           <div className="flex-1 flex items-center justify-center overflow-hidden px-2 relative">
-            {fullscreenPage > 0 && (
-              <button onClick={() => setFullscreenPage(p => p - 1)}
+            {(isRTL ? fullscreenPage < panels.length - 1 : fullscreenPage > 0) && (
+              <button onClick={() => setFullscreenPage(p => isRTL ? Math.min(panels.length - 1, p + 1) : p - 1)}
                 className="absolute left-2 md:left-4 top-1/2 -translate-y-1/2 w-10 h-10 md:w-12 md:h-12 flex items-center justify-center bg-black/50 hover:bg-black/70 border border-[#3f3f46] rounded-full text-white cursor-pointer z-10 transition-colors">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="15 18 9 12 15 6"/></svg>
               </button>
             )}
             <img src={panels[fullscreenPage]} className="max-h-full max-w-full object-contain select-none" alt={`Page ${fullscreenPage + 1}`} draggable={false} />
-            {fullscreenPage < panels.length - 1 && (
-              <button onClick={() => setFullscreenPage(p => p + 1)}
+            {(isRTL ? fullscreenPage > 0 : fullscreenPage < panels.length - 1) && (
+              <button onClick={() => setFullscreenPage(p => isRTL ? p - 1 : Math.min(panels.length - 1, p + 1))}
                 className="absolute right-2 md:right-4 top-1/2 -translate-y-1/2 w-10 h-10 md:w-12 md:h-12 flex items-center justify-center bg-black/50 hover:bg-black/70 border border-[#3f3f46] rounded-full text-white cursor-pointer z-10 transition-colors">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="9 18 15 12 9 6"/></svg>
               </button>

@@ -28,6 +28,8 @@ export default function EditSeriesPage() {
   const [saving, setSaving] = useState(false)
   const [thumbPreview, setThumbPreview] = useState<string | null>(null)
   const [newThumbFile, setNewThumbFile] = useState<File | null>(null)
+  const [readingMode, setReadingMode] = useState<'webtoon' | 'horizontal'>('webtoon')
+  const [readingDirection, setReadingDirection] = useState<'ltr' | 'rtl'>('ltr')
 
   // Expanded chapter for editing
   const [expandedChId, setExpandedChId] = useState<string | null>(null)
@@ -55,6 +57,8 @@ export default function EditSeriesPage() {
       setFormat(s.format)
       setGenres(new Set(s.genres || []))
       setThumbPreview(s.thumbnail_url)
+      setReadingMode(s.reading_mode || 'webtoon')
+      setReadingDirection(s.reading_direction || 'ltr')
       const { data: chs } = await anonDb.from('chapters').select('*').eq('series_id', s.id).order('chapter_number', { ascending: true }) as { data: any[] | null }
       setChapters(chs ?? [])
       if (chs && chs.length > 0) setNewChNumber(chs[chs.length - 1].chapter_number + 1)
@@ -106,7 +110,9 @@ export default function EditSeriesPage() {
     }
     const { error } = await (createWriteClient() as any).from('series').update({
       title, description: desc, format, genres: Array.from(genres),
-      thumbnail_url: thumbnailUrl, updated_at: new Date().toISOString()
+      thumbnail_url: thumbnailUrl, reading_mode: readingMode,
+      reading_direction: readingMode === 'horizontal' ? readingDirection : 'ltr',
+      updated_at: new Date().toISOString()
     }).eq('id', series.id)
     if (error) show('Save failed: ' + error.message)
     else {
@@ -321,6 +327,20 @@ export default function EditSeriesPage() {
             ))}
           </div>
         </div>
+        <div>
+          <label className="block text-xs text-[#71717a] mb-1.5">Reading Mode</label>
+          <div className="flex gap-1.5">
+            <button onClick={() => setReadingMode('webtoon')} className={`px-4 py-1.5 rounded-lg cursor-pointer text-xs font-medium border transition-all ${readingMode === 'webtoon' ? 'border-[#a855f7] text-[#c084fc] bg-purple-500/10' : 'border-[#3f3f46] text-[#71717a] bg-transparent hover:border-[#a855f7]'}`}>▼ Webtoon</button>
+            <button onClick={() => setReadingMode('horizontal')} className={`px-4 py-1.5 rounded-lg cursor-pointer text-xs font-medium border transition-all ${readingMode === 'horizontal' ? 'border-[#a855f7] text-[#c084fc] bg-purple-500/10' : 'border-[#3f3f46] text-[#71717a] bg-transparent hover:border-[#a855f7]'}`}>◀▶ Horizontal</button>
+          </div>
+        </div>
+        {readingMode === 'horizontal' && (<div>
+          <label className="block text-xs text-[#71717a] mb-1.5">Reading Direction</label>
+          <div className="flex gap-1.5">
+            <button onClick={() => setReadingDirection('ltr')} className={`px-4 py-1.5 rounded-lg cursor-pointer text-xs font-medium border transition-all ${readingDirection === 'ltr' ? 'border-[#a855f7] text-[#c084fc] bg-purple-500/10' : 'border-[#3f3f46] text-[#71717a] bg-transparent hover:border-[#a855f7]'}`}>→ Left to Right</button>
+            <button onClick={() => setReadingDirection('rtl')} className={`px-4 py-1.5 rounded-lg cursor-pointer text-xs font-medium border transition-all ${readingDirection === 'rtl' ? 'border-[#a855f7] text-[#c084fc] bg-purple-500/10' : 'border-[#3f3f46] text-[#71717a] bg-transparent hover:border-[#a855f7]'}`}>← Right to Left</button>
+          </div>
+        </div>)}
         <div>
           <label className="block text-xs text-[#71717a] mb-1.5">Genres <span className="text-[#52525b]">(max 3)</span></label>
           <div className="flex gap-1 flex-wrap">

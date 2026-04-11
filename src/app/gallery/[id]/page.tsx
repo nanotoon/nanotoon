@@ -99,11 +99,12 @@ export default function GalleryDetailPage() {
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') { setShowFullscreen(false); setShowCommentsModal(false) }
       if (showFullscreen) {
-        if (e.key === 'ArrowLeft') setFullscreenPage(p => Math.max(0, p - 1))
-        if (e.key === 'ArrowRight') {
-          const maxP = (item?.image_urls?.length ?? 1) - 1
-          setFullscreenPage(p => Math.min(maxP, p + 1))
-        }
+        const maxP = (item?.image_urls?.length ?? 1) - 1
+        const rtl = (item?.reading_mode || 'horizontal') === 'horizontal' && item?.reading_direction === 'rtl'
+        const prev = rtl ? 'ArrowRight' : 'ArrowLeft'
+        const next = rtl ? 'ArrowLeft' : 'ArrowRight'
+        if (e.key === prev) setFullscreenPage(p => Math.max(0, p - 1))
+        if (e.key === next) setFullscreenPage(p => Math.min(maxP, p + 1))
       }
     }
     window.addEventListener('keydown', handler)
@@ -114,12 +115,13 @@ export default function GalleryDetailPage() {
     touchStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }
   }, [])
 
-  const handleTouchEnd = useCallback((e: React.TouchEvent, maxPages: number) => {
+  const handleTouchEnd = useCallback((e: React.TouchEvent, maxPages: number, rtl?: boolean) => {
     if (!touchStart.current) return
     const dx = e.changedTouches[0].clientX - touchStart.current.x
     const dy = e.changedTouches[0].clientY - touchStart.current.y
     if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 50) {
-      if (dx < 0) setFullscreenPage(p => Math.min(maxPages - 1, p + 1))
+      const goNext = rtl ? dx > 0 : dx < 0
+      if (goNext) setFullscreenPage(p => Math.min(maxPages - 1, p + 1))
       else setFullscreenPage(p => Math.max(0, p - 1))
     }
     touchStart.current = null
@@ -218,6 +220,7 @@ export default function GalleryDetailPage() {
   const rm = item.reading_mode || 'horizontal'
   const isAlbum = imgs.length > 1
   const isSingleImage = imgs.length === 1
+  const isRTL = rm === 'horizontal' && (item.reading_direction) === 'rtl'
 
   return (
     <div className="min-h-screen bg-black">
@@ -347,7 +350,7 @@ export default function GalleryDetailPage() {
             {imgs.length>0 && <img src={imgs[page]} className="w-full rounded-lg" alt="" />}
             {imgs.length>1 && <div className="flex flex-col items-center gap-2 mt-3">
               <div className="flex items-center justify-center gap-3">
-                <button onClick={()=>setPage(p=>Math.max(0,p-1))} disabled={page===0} className={`px-4 py-2 border rounded-xl text-sm cursor-pointer bg-transparent ${page===0?'border-[#27272a] text-[#3f3f46]':'border-[#3f3f46] text-[#a1a1aa] hover:border-[#a855f7]'}`}>◀ Prev</button>
+                <button onClick={()=>setPage(p=> isRTL ? Math.min(imgs.length-1,p+1) : Math.max(0,p-1))} disabled={isRTL ? page===imgs.length-1 : page===0} className={`px-4 py-2 border rounded-xl text-sm cursor-pointer bg-transparent ${(isRTL ? page===imgs.length-1 : page===0)?'border-[#27272a] text-[#3f3f46]':'border-[#3f3f46] text-[#a1a1aa] hover:border-[#a855f7]'}`}>◀ Prev</button>
                 <button onClick={()=>{setFullscreenPage(page);setShowFullscreen(true)}}
                   title="Full Screen"
                   className="group relative w-[40px] h-[38px] border border-[#3f3f46] rounded-xl bg-transparent text-[#a1a1aa] cursor-pointer hover:border-[#a855f7] flex items-center justify-center">
@@ -359,7 +362,7 @@ export default function GalleryDetailPage() {
                   </svg>
                   <span className="absolute -top-8 left-1/2 -translate-x-1/2 px-2 py-1 bg-[#27272a] border border-[#3f3f46] rounded text-[0.65rem] text-[#e4e4e7] whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">Full Screen</span>
                 </button>
-                <button onClick={()=>setPage(p=>Math.min(imgs.length-1,p+1))} disabled={page===imgs.length-1} className={`px-4 py-2 border rounded-xl text-sm cursor-pointer bg-transparent ${page===imgs.length-1?'border-[#27272a] text-[#3f3f46]':'border-[#3f3f46] text-[#a1a1aa] hover:border-[#a855f7]'}`}>Next ▶</button>
+                <button onClick={()=>setPage(p=> isRTL ? Math.max(0,p-1) : Math.min(imgs.length-1,p+1))} disabled={isRTL ? page===0 : page===imgs.length-1} className={`px-4 py-2 border rounded-xl text-sm cursor-pointer bg-transparent ${(isRTL ? page===0 : page===imgs.length-1)?'border-[#27272a] text-[#3f3f46]':'border-[#3f3f46] text-[#a1a1aa] hover:border-[#a855f7]'}`}>Next ▶</button>
               </div>
               <span className="text-sm text-[#71717a]">{page+1}/{imgs.length}</span>
             </div>}
@@ -428,7 +431,7 @@ export default function GalleryDetailPage() {
       {showFullscreen && imgs.length > 0 && (
         <div className="fixed inset-0 bg-black z-[300] flex flex-col"
           onTouchStart={handleTouchStart}
-          onTouchEnd={(e) => handleTouchEnd(e, imgs.length)}>
+          onTouchEnd={(e) => handleTouchEnd(e, imgs.length, isRTL)}>
           {/* Top bar */}
           <div className="flex items-center justify-between p-3 shrink-0">
             {imgs.length > 1 ? (
@@ -440,15 +443,15 @@ export default function GalleryDetailPage() {
           </div>
           {/* Image + arrows */}
           <div className="flex-1 flex items-center justify-center overflow-hidden px-2 relative">
-            {imgs.length > 1 && fullscreenPage > 0 && (
-              <button onClick={()=>setFullscreenPage(p => p - 1)}
+            {imgs.length > 1 && (isRTL ? fullscreenPage < imgs.length - 1 : fullscreenPage > 0) && (
+              <button onClick={()=>setFullscreenPage(p => isRTL ? Math.min(imgs.length - 1, p + 1) : p - 1)}
                 className="absolute left-2 md:left-4 top-1/2 -translate-y-1/2 w-10 h-10 md:w-12 md:h-12 flex items-center justify-center bg-black/50 hover:bg-black/70 border border-[#3f3f46] rounded-full text-white cursor-pointer z-10 transition-colors">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="15 18 9 12 15 6"/></svg>
               </button>
             )}
             <img src={imgs[fullscreenPage]} className="max-h-full max-w-full object-contain select-none" alt={item.title} draggable={false} onClick={e=>e.stopPropagation()} />
-            {imgs.length > 1 && fullscreenPage < imgs.length - 1 && (
-              <button onClick={()=>setFullscreenPage(p => p + 1)}
+            {imgs.length > 1 && (isRTL ? fullscreenPage > 0 : fullscreenPage < imgs.length - 1) && (
+              <button onClick={()=>setFullscreenPage(p => isRTL ? p - 1 : Math.min(imgs.length - 1, p + 1))}
                 className="absolute right-2 md:right-4 top-1/2 -translate-y-1/2 w-10 h-10 md:w-12 md:h-12 flex items-center justify-center bg-black/50 hover:bg-black/70 border border-[#3f3f46] rounded-full text-white cursor-pointer z-10 transition-colors">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="9 18 15 12 9 6"/></svg>
               </button>
