@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useToast } from '@/components/Toast'
 import { useAuth } from '@/contexts/AuthContext'
-import { createWriteClient, getAuthUserId } from '@/lib/supabase/write'
+import { createWriteClient, getAuthUserId, ensureFreshSession } from '@/lib/supabase/write'
 import { createAnonClient } from '@/lib/supabase/anon'
 
 const MAX_FILE_GALLERY = 10 * 1024 * 1024   // 10MB per file (multi)
@@ -100,6 +100,7 @@ export default function EditGalleryPage() {
 
   // ─── Save ───────────────────────────────────────────────────
   async function save() {
+    await ensureFreshSession()
     if (!item || !user) return
     if (!title.trim()) { show('Title is required'); return }
 
@@ -173,6 +174,7 @@ export default function EditGalleryPage() {
 
   // ─── Delete gallery ─────────────────────────────────────────
   async function deleteGallery() {
+    await ensureFreshSession()
     if (!item) return
     if (!confirm('Delete this gallery item permanently?')) return
     if (!confirm('This cannot be undone. Are you sure?')) return

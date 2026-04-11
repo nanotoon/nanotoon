@@ -2,15 +2,27 @@
 
 import { createClient } from "@supabase/supabase-js";
 
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
+
+function getRef(): string {
+  return SUPABASE_URL.match(/\/\/([^.]+)\./)?.[1] || "";
+}
+
+function getCookieName(): string {
+  return `sb-${getRef()}-auth-token`;
+}
+
 /**
- * Read the Supabase session from document.cookie.
- * @supabase/ssr stores it as `base64-<json>` in `sb-<ref>-auth-token` cookies.
+ * Read the full Supabase session from document.cookie.
  */
-function readSessionFromCookie(): { access_token: string; user_id: string } | null {
+function readSessionFromCookie(): {
+  access_token: string;
+  refresh_token: string;
+  user_id: string;
+} | null {
   try {
-    const url = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-    const ref = url.match(/\/\/([^.]+)\./)?.[1] || "";
-    const cookieName = `sb-${ref}-auth-token`;
+    const cookieName = getCookieName();
     const cookies = document.cookie.split(";").map((c) => c.trim());
 
     const chunks: { idx: number; val: string }[] = [];
@@ -34,39 +46,99 @@ function readSessionFromCookie(): { access_token: string; user_id: string } | nu
     const token = session?.access_token;
     if (!token) return null;
 
-    // Decode JWT to get user ID (sub claim)
     const parts = token.split(".");
     const payload = JSON.parse(atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")));
     if (!payload.sub) return null;
 
-    return { access_token: token, user_id: payload.sub };
+    return {
+      access_token: token,
+      refresh_token: session?.refresh_token || "",
+      user_id: payload.sub,
+    };
   } catch {
     return null;
   }
 }
 
+function isTokenExpired(token: string): boolean {
+  try {
+    const parts = token.split(".");
+    const payload = JSON.parse(atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")));
+    return payload.exp < Math.floor(Date.now() / 1000) + 60;
+  } catch {
+    return true;
+  }
+}
+
 /**
- * Get the current user's ID from the auth cookie.
- * Always in sync with createWriteClient()'s token.
+ * Write session back to cookie in base64 format that @supabase/ssr expects.
  */
+function writeSessionToCookie(session: any): void {
+  const cookieName = getCookieName();
+  const encoded = "base64-" + btoa(JSON.stringify(session));
+  const maxChunkSize = 3180;
+
+  // Clear old cookies
+  const allCookies = document.cookie.split(";").map((c) => c.trim());
+  for (const c of allCookies) {
+    const name = c.split("=")[0];
+    if (name === cookieName || name.startsWith(cookieName + ".")) {
+      document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 UTC;path=/;`;
+    }
+  }
+
+  if (encoded.length <= maxChunkSize) {
+    document.cookie = `${cookieName}=${encodeURIComponent(encoded)};path=/;max-age=${60 * 60 * 24 * 365};SameSite=Lax`;
+  } else {
+    const chunkArr = [];
+    for (let i = 0; i < encoded.length; i += maxChunkSize) {
+      chunkArr.push(encoded.slice(i, i + maxChunkSize));
+    }
+    for (let i = 0; i < chunkArr.length; i++) {
+      document.cookie = `${cookieName}.${i}=${encodeURIComponent(chunkArr[i])};path=/;max-age=${60 * 60 * 24 * 365};SameSite=Lax`;
+    }
+  }
+}
+
+/**
+ * Refresh the token if expired. Call BEFORE any write operation.
+ * Uses Supabase auth API directly — no singleton client, no locks.
+ */
+export async function ensureFreshSession(): Promise<boolean> {
+  const session = readSessionFromCookie();
+  if (!session) return false;
+  if (!isTokenExpired(session.access_token)) return true;
+  if (!session.refresh_token) return false;
+
+  try {
+    const res = await fetch(
+      `${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", apikey: SUPABASE_ANON_KEY },
+        body: JSON.stringify({ refresh_token: session.refresh_token }),
+      }
+    );
+    if (!res.ok) return false;
+    const data = await res.json();
+    if (!data.access_token) return false;
+    writeSessionToCookie(data);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function getAuthUserId(): string | null {
   return readSessionFromCookie()?.user_id ?? null;
 }
 
-/**
- * Create a fresh Supabase client with the access token from cookies.
- * No session management, no locks, no refresh.
- */
 export function createWriteClient(): ReturnType<typeof createClient> | null {
   const session = readSessionFromCookie();
   if (!session) return null;
 
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      global: { headers: { Authorization: `Bearer ${session.access_token}` } },
-      auth: { persistSession: false, autoRefreshToken: false },
-    }
-  );
+  return createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    global: { headers: { Authorization: `Bearer ${session.access_token}` } },
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
 }

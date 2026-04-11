@@ -87,6 +87,7 @@ export default function EditSeriesPage() {
 
   // ─── Save Series Info ───────────────────────────────────────
   async function save() {
+    await ensureFreshSession()
     if (!series || !user) return
     setSaving(true)
     let thumbnailUrl = series.thumbnail_url
@@ -119,6 +120,7 @@ export default function EditSeriesPage() {
 
   // ─── Delete Series ──────────────────────────────────────────
   async function deleteSeries() {
+    await ensureFreshSession()
     if (!series) return
     if (!confirm('Delete this series and all its chapters?')) return
     if (!confirm('This cannot be undone. Are you sure?')) return
@@ -139,6 +141,7 @@ export default function EditSeriesPage() {
 
   // ─── Save Chapter Edits ─────────────────────────────────────
   async function saveChapter(chId: string) {
+    await ensureFreshSession()
     setSavingCh(true)
     const { error } = await (createWriteClient() as any).from('chapters').update({
       title: editChTitle, rating: editChRating
@@ -246,6 +249,7 @@ export default function EditSeriesPage() {
 
   // ─── Add New Chapter ────────────────────────────────────────
   async function addChapter() {
+    await ensureFreshSession()
     if (!series || !user || !newChTitle.trim()) { show('Chapter title is required'); return }
     if (newChFiles.length < 2) { show('Please select at least 2 pages for the chapter'); return }
     const totalSize = newChFiles.reduce((s, f) => s + f.size, 0)

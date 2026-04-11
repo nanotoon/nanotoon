@@ -2,7 +2,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { GENRES_ALL } from '@/data/mock'
 import { useAuth } from '@/contexts/AuthContext'
-import { createWriteClient, getAuthUserId } from '@/lib/supabase/write'
+import { createWriteClient, getAuthUserId, ensureFreshSession } from '@/lib/supabase/write'
 import { createAnonClient } from '@/lib/supabase/anon'
 
 const MAX_FILE = 10 * 1024 * 1024
@@ -172,6 +172,7 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
     if (uploadType === 'gallery' && totalSize > MAX_TOTAL_GALLERY) { setUploadError('Total images exceed 50MB'); onToast('Total images exceed 50MB'); return }
     setUploading(true); setUploadError(''); setProgress('Preparing...')
     try {
+      await ensureFreshSession()
       await ensureProfile()
       setProgress('Starting upload...')
       if (uploadType === 'gallery') await doGalleryUpload()

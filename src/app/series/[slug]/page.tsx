@@ -10,7 +10,7 @@ import { ReportModal } from '@/components/ReportModal'
 import { useToast } from '@/components/Toast'
 import { useAuth } from '@/contexts/AuthContext'
 import { createAnonClient } from '@/lib/supabase/anon'
-import { createWriteClient, getAuthUserId } from '@/lib/supabase/write'
+import { createWriteClient, getAuthUserId, ensureFreshSession } from '@/lib/supabase/write'
 
 function fmtNum(n: number | null | undefined): string {
   if (!n) return '0'; if (n >= 1e6) return (n/1e6).toFixed(1).replace(/\.0$/,'')+'M'; if (n >= 1e3) return (n/1e3).toFixed(1).replace(/\.0$/,'')+'K'; return n.toString()
@@ -168,6 +168,7 @@ export default function ReaderPage() {
   }, [])
 
   async function toggleLike() {
+    await ensureFreshSession()
     if (!user || !series) { show('Sign in to like!'); return }
     const uid = getAuthUserId()
     const wc = createWriteClient()
@@ -190,6 +191,7 @@ export default function ReaderPage() {
   }
 
   async function toggleFav() {
+    await ensureFreshSession()
     if (!user || !series) { show('Sign in to favorite!'); return }
     const uid = getAuthUserId()
     const wc = createWriteClient()
@@ -206,6 +208,7 @@ export default function ReaderPage() {
   }
 
   async function toggleFollow() {
+    await ensureFreshSession()
     if (!user || !series) { show('Sign in to follow!'); return }
     const uid = getAuthUserId()
     const wc = createWriteClient()
@@ -223,6 +226,7 @@ export default function ReaderPage() {
   }
 
   async function postComment(isSeries: boolean, parentId?: string) {
+    await ensureFreshSession()
     if (!user || !series) { show('Sign in to comment!'); return }
     const uid = getAuthUserId()
     const wc = createWriteClient()
@@ -262,6 +266,7 @@ export default function ReaderPage() {
   }
 
   async function toggleCommentLike(commentId: string, currentCount: number) {
+    await ensureFreshSession()
     if (!user) { show('Sign in to like!'); return }
     const uid = getAuthUserId()
     if (!uid) { show('Sign in to like!'); return }

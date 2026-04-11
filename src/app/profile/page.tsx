@@ -9,6 +9,7 @@ import { useToast } from '@/components/Toast'
 import { useAuth } from '@/contexts/AuthContext'
 import { createClient } from '@/lib/supabase/client'
 import { createAnonClient } from '@/lib/supabase/anon'
+import { ensureFreshSession } from '@/lib/supabase/write'
 import Link from 'next/link'
 
 function fmtNum(n: number) { if (n >= 1e6) return (n/1e6).toFixed(1).replace(/\.0$/,'')+'M'; if (n >= 1e3) return (n/1e3).toFixed(1).replace(/\.0$/,'')+'K'; return n.toString() }
@@ -51,6 +52,7 @@ export default function ProfilePage() {
   }, [user, anonDb]) // FIX: was [user, supabase]
 
   async function handlePfp(e: React.ChangeEvent<HTMLInputElement>) {
+    await ensureFreshSession()
     const f = e.target.files?.[0]; if (!f || !user) return
     const ext = f.name.split('.').pop()
     const path = `avatars/${user.id}.${ext}`
@@ -67,6 +69,7 @@ export default function ProfilePage() {
   }
 
   async function delSeries(id: string) {
+    await ensureFreshSession()
     if (!confirm('Delete this series?')) return
     // FIX: added error handling — was silently failing without surfacing the error
     const { error } = await supabase.from('series').delete().eq('id', id)
@@ -76,6 +79,7 @@ export default function ProfilePage() {
   }
 
   async function delGallery(id: string) {
+    await ensureFreshSession()
     if (!confirm('Delete this gallery item?')) return
     const { error } = await supabase.from('gallery').delete().eq('id', id)
     if (error) { show('Failed to delete: ' + error.message); return }

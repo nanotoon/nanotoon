@@ -8,7 +8,7 @@ import { ShareModal } from '@/components/ShareModal'
 import { useToast } from '@/components/Toast'
 import { useAuth } from '@/contexts/AuthContext'
 import { createAnonClient } from '@/lib/supabase/anon'
-import { createWriteClient, getAuthUserId } from '@/lib/supabase/write'
+import { createWriteClient, getAuthUserId, ensureFreshSession } from '@/lib/supabase/write'
 
 function fmtNum(n: number|null|undefined): string { if (!n) return '0'; if (n>=1e6) return (n/1e6).toFixed(1).replace(/\.0$/,'')+'M'; if (n>=1e3) return (n/1e3).toFixed(1).replace(/\.0$/,'')+'K'; return n.toString() }
 function timeAgo(d: string) { const m=Math.floor((Date.now()-new Date(d).getTime())/60000); if(m<1)return'just now';if(m<60)return m+'m ago';const h=Math.floor(m/60);if(h<24)return h+'h ago';return Math.floor(h/24)+'d ago' }
@@ -126,6 +126,7 @@ export default function GalleryDetailPage() {
   }, [])
 
   async function toggleLike() {
+    await ensureFreshSession()
     if (!user||!item){show('Sign in!');return}
     const uid = getAuthUserId()
     const wc = createWriteClient()
@@ -148,6 +149,7 @@ export default function GalleryDetailPage() {
   }
 
   async function toggleFavorite() {
+    await ensureFreshSession()
     if (!user||!item){show('Sign in!');return}
     const uid = getAuthUserId()
     const wc = createWriteClient()
@@ -164,6 +166,7 @@ export default function GalleryDetailPage() {
   }
 
   async function toggleFollow() {
+    await ensureFreshSession()
     if (!user||!item){show('Sign in!');return}
     const uid = getAuthUserId()
     const wc = createWriteClient()
@@ -181,6 +184,7 @@ export default function GalleryDetailPage() {
   }
 
   async function postComment() {
+    await ensureFreshSession()
     if (!user){show('Sign in!');return}
     const uid = getAuthUserId()
     const wc = createWriteClient()
@@ -192,6 +196,7 @@ export default function GalleryDetailPage() {
   }
 
   async function toggleCommentLike(commentId: string, currentCount: number) {
+    await ensureFreshSession()
     if (!user){show('Sign in to like!');return}
     const uid = getAuthUserId()
     if (!uid){show('Sign in to like!');return}
