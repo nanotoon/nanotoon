@@ -145,12 +145,12 @@ export default function ProfilePage() {
       ) : (
         <div className="grid grid-cols-3 md:grid-cols-4 gap-3">
           {myGallery.map((g, i) => (
-            <div key={g.id} className="relative group">
+            <div key={g.id}>
               <GalleryCard item={g} index={i} />
-              <button
-                onClick={() => delGallery(g.id)}
-                className="absolute top-1.5 right-1.5 w-6 h-6 rounded-md bg-black/70 border border-red-500/40 text-[#f87171] text-xs cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center hover:bg-red-500/20"
-              >✕</button>
+              <div className="flex gap-1.5 mt-1.5">
+                <Link href={`/gallery/${g.id}/edit`} className="flex-1 py-1 bg-[#27272a] border border-[#3f3f46] rounded-lg text-[0.7rem] text-[#c084fc] text-center hover:border-[#a855f7] no-underline">Edit</Link>
+                <button onClick={() => delGallery(g.id)} className="flex-1 py-1 bg-[#27272a] border border-[#3f3f46] rounded-lg text-[0.7rem] text-[#f87171] hover:border-[#ef4444] cursor-pointer">Delete</button>
+              </div>
             </div>
           ))}
         </div>
