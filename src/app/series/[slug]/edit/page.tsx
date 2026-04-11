@@ -112,6 +112,7 @@ export default function EditSeriesPage() {
       setSeries((s: any) => ({ ...s, title, description: desc, format, genres: Array.from(genres), thumbnail_url: thumbnailUrl }))
       setNewThumbFile(null)
       show('Changes saved!')
+      setTimeout(() => window.location.reload(), 600)
     }
     setSaving(false)
   }
@@ -146,6 +147,7 @@ export default function EditSeriesPage() {
     else {
       setChapters(prev => prev.map(c => c.id === chId ? { ...c, title: editChTitle, rating: editChRating } : c))
       show('Chapter updated!')
+      setTimeout(() => window.location.reload(), 600)
     }
     setSavingCh(false)
   }
@@ -157,7 +159,7 @@ export default function EditSeriesPage() {
     if (error) { show('Failed: ' + error.message); return }
     setChapters(prev => prev.filter(c => c.id !== id))
     if (expandedChId === id) setExpandedChId(null)
-    show('Chapter deleted')
+    show('Chapter deleted'); setTimeout(() => window.location.reload(), 600)
   }
 
   // ─── Move Chapter ───────────────────────────────────────────
@@ -178,7 +180,7 @@ export default function EditSeriesPage() {
     updated[swapIdx] = { ...updated[swapIdx], chapter_number: tempNum }
     updated.sort((a, b) => a.chapter_number - b.chapter_number)
     setChapters(updated)
-    show('Chapter order updated')
+    show('Chapter order updated'); setTimeout(() => window.location.reload(), 600)
   }
 
   // ─── Page Management ────────────────────────────────────────
@@ -191,7 +193,7 @@ export default function EditSeriesPage() {
     const { error } = await (createWriteClient() as any).from('chapters').update({ page_urls: newUrls.length > 0 ? newUrls : null }).eq('id', chId)
     if (error) { show('Failed: ' + error.message); return }
     setChapters(prev => prev.map(c => c.id === chId ? { ...c, page_urls: newUrls.length > 0 ? newUrls : null } : c))
-    show('Page deleted')
+    show('Page deleted'); setTimeout(() => window.location.reload(), 600)
   }
 
   async function movePage(chId: string, fromIdx: number, direction: 'up' | 'down') {
@@ -206,7 +208,7 @@ export default function EditSeriesPage() {
     const { error } = await (createWriteClient() as any).from('chapters').update({ page_urls: newUrls }).eq('id', chId)
     if (error) { show('Failed: ' + error.message); return }
     setChapters(prev => prev.map(c => c.id === chId ? { ...c, page_urls: newUrls } : c))
-    show('Page order updated')
+    show('Page order updated'); setTimeout(() => window.location.reload(), 600)
   }
 
   async function addPagesToChapter(chId: string, e: React.ChangeEvent<HTMLInputElement>) {
@@ -239,7 +241,7 @@ export default function EditSeriesPage() {
     const { error } = await (createWriteClient() as any).from('chapters').update({ page_urls: allUrls }).eq('id', chId)
     if (error) { show('Failed to save: ' + error.message); return }
     setChapters(prev => prev.map(c => c.id === chId ? { ...c, page_urls: allUrls } : c))
-    show(`${files.length} page(s) added!`)
+    show(`${files.length} page(s) added!`); setTimeout(() => window.location.reload(), 600)
   }
 
   // ─── Add New Chapter ────────────────────────────────────────
@@ -274,6 +276,7 @@ export default function EditSeriesPage() {
     setNewChTitle(''); setNewChNumber(newChNumber + 1); setNewChFiles([]); setNewChRating('General')
     setShowAddChapter(false); setAddingChapter(false)
     show('Chapter added!')
+    setTimeout(() => window.location.reload(), 600)
   }
 
   if (loading) return <div className="min-h-screen"><LoadingSpinner /></div>

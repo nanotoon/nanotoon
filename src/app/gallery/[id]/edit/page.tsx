@@ -168,7 +168,7 @@ export default function EditGalleryPage() {
     setNewImageFiles([])
     setNewThumbFile(null)
     show('Changes saved!')
-    setSaving(false)
+    setTimeout(() => window.location.reload(), 600)
   }
 
   // ─── Delete gallery ─────────────────────────────────────────

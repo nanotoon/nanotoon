@@ -62,7 +62,7 @@ export default function ProfilePage() {
       const json = await res.json()
       if (!res.ok || json.error) { show('Upload failed: ' + (json.error || 'Unknown error')); return }
       await supabase.from('profiles').update({ avatar_url: json.url }).eq('id', user.id)
-      await refreshProfile(); show('Profile picture updated!')
+      await refreshProfile(); show('Profile picture updated!'); setTimeout(() => window.location.reload(), 600)
     } catch (err: any) { show('Upload failed: ' + (err?.message || 'Unknown error')) }
   }
 

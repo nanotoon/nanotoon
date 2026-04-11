@@ -223,7 +223,7 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
     })
     if (chErr) throw new Error(chErr.message || 'Chapter save failed')
     await (createWriteClient() as any).from('series').update({ updated_at: new Date().toISOString() }).eq('id', seriesId)
-    onToast('Chapter published! 🎉'); onClose()
+    onToast('Chapter published! 🎉'); onClose(); setTimeout(() => window.location.reload(), 600)
   }
 
   async function doGalleryUpload() {
@@ -250,7 +250,7 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
       reading_mode: gReadMode,
     })
     if (error) throw new Error(error.message)
-    onToast('Gallery published! 🎉'); onClose()
+    onToast('Gallery published! 🎉'); onClose(); setTimeout(() => window.location.reload(), 600)
   }
 
   return (
