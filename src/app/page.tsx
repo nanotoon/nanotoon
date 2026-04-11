@@ -29,9 +29,9 @@ export default function HomePage() {
     async function load() {
       try {
         setLoading(true)
-        let mvQ = supabase.from('series').select('*, profiles!series_author_id_fkey(display_name, handle, avatar_url)').order('total_views', { ascending: false }).limit(9)
+        let mvQ = supabase.from('series').select('*, profiles!series_author_id_fkey(display_name, handle, avatar_url)').neq('is_removed', true).order('total_views', { ascending: false }).limit(9)
         if (formatFilter !== 'All') mvQ = mvQ.eq('format', formatFilter)
-        let latQ = supabase.from('series').select('*, profiles!series_author_id_fkey(display_name, handle, avatar_url)').order('updated_at', { ascending: false }).limit(latestLimit)
+        let latQ = supabase.from('series').select('*, profiles!series_author_id_fkey(display_name, handle, avatar_url)').neq('is_removed', true).order('updated_at', { ascending: false }).limit(latestLimit)
         if (formatFilter !== 'All') latQ = latQ.eq('format', formatFilter)
         const [mv, lt] = await Promise.all([mvQ, latQ])
         if (mv.error) console.error('Most viewed query error:', mv.error.message)

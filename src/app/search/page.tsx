@@ -24,7 +24,7 @@ function SearchContent() {
       setLoading(true)
       const searchTerm = `%${query.trim()}%`
       let q = supabase.from('series')
-        .select('*, profiles!series_author_id_fkey(display_name, handle, avatar_url)')
+        .select('*, profiles!series_author_id_fkey(display_name, handle, avatar_url)').neq('is_removed', true)
         .or(`title.ilike.${searchTerm},description.ilike.${searchTerm}`)
         .order('total_views', { ascending: false })
         .limit(50)
@@ -38,12 +38,12 @@ function SearchContent() {
       if (data && data.length < 10) {
         const { data: genreMatch } = await supabase.from('series')
           .select('*, profiles!series_author_id_fkey(display_name, handle, avatar_url)')
-          .contains('genres', [query.trim()])
+          .neq('is_removed', true).contains('genres', [query.trim()])
           .order('total_views', { ascending: false }).limit(20)
         
         const { data: tagMatch } = await supabase.from('series')
           .select('*, profiles!series_author_id_fkey(display_name, handle, avatar_url)')
-          .contains('tags', [query.trim()])
+          .neq('is_removed', true).contains('tags', [query.trim()])
           .order('total_views', { ascending: false }).limit(20)
         
         const existingIds = new Set((data ?? []).map((s: any) => s.id))

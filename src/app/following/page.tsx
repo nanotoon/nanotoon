@@ -48,12 +48,12 @@ export default function FollowingPage() {
           const [seriesRes, galleryRes] = await Promise.all([
             anonDb.from('series')
               .select('*, profiles!series_author_id_fkey(display_name, handle, avatar_url)')
-              .in('author_id', followedIds)
+              .neq('is_removed', true).in('author_id', followedIds)
               .order('updated_at', { ascending: false })
               .limit(20),
             anonDb.from('gallery')
               .select('*, profiles!gallery_author_id_fkey(display_name, handle, avatar_url)')
-              .in('author_id', followedIds)
+              .neq('is_removed', true).in('author_id', followedIds)
               .order('created_at', { ascending: false })
               .limit(20),
           ]) as any[]

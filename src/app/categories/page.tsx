@@ -28,7 +28,7 @@ export default function CategoriesPage() {
     async function load() {
       try {
         setLoading(true)
-        let q = supabase.from('series').select('*, profiles!series_author_id_fkey(display_name, handle, avatar_url)')
+        let q = supabase.from('series').select('*, profiles!series_author_id_fkey(display_name, handle, avatar_url)').neq('is_removed', true)
           .order('updated_at', { ascending: false }).limit(limit)
         if (selectedCat) q = q.contains('genres', [selectedCat])
         const { data } = await q

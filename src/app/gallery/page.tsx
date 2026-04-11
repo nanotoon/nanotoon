@@ -28,7 +28,7 @@ export default function GalleryPage() {
         // Try with explicit FK join for author profile
         let result = await supabase
           .from('gallery')
-          .select('*, profiles!gallery_author_id_fkey(display_name, handle, avatar_url)')
+          .select('*, profiles!gallery_author_id_fkey(display_name, handle, avatar_url)').neq('is_removed', true)
           .order('created_at', { ascending: false })
           .limit(limit)
 
@@ -38,6 +38,7 @@ export default function GalleryPage() {
           result = await supabase
             .from('gallery')
             .select('*')
+            .neq('is_removed', true)
             .order('created_at', { ascending: false })
             .limit(limit)
         }
