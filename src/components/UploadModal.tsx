@@ -230,7 +230,7 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
     const imageUrls: string[] = []
     for (let i = 0; i < files.length; i++) {
       setProgress('Compressing image ' + (i + 1) + '/' + files.length + '...')
-      const compressed = await compressImage(files[i], 9999, 0.85)
+      const compressed = await compressImage(files[i], 1200, 0.85)
       setProgress('Uploading image ' + (i + 1) + '/' + files.length + '...')
       const path = 'gallery/' + getAuthUserId()! + '/' + Date.now() + '_' + i + '.webp'
       const url = await uploadToR2(compressed, path)
@@ -238,7 +238,7 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
     }
     let thumbnailUrl: string | null = null
     if (files.length > 1 && thumbFile) {
-      const compressed = await compressImage(thumbFile, 9999, 0.85)
+      const compressed = await compressImage(thumbFile, 1200, 0.85)
       const path = 'gallery/' + getAuthUserId()! + '/thumb_' + Date.now() + '.webp'
       try { thumbnailUrl = await uploadToR2(compressed, path) } catch { /* skip */ }
     }
