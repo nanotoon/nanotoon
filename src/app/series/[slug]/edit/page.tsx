@@ -6,7 +6,7 @@ import Link from 'next/link'
 import { GENRES_ALL, GRADIENTS } from '@/data/mock'
 import { useToast } from '@/components/Toast'
 import { useAuth } from '@/contexts/AuthContext'
-import { createWriteClient, getAuthUserId } from '@/lib/supabase/write'
+import { createWriteClient, getAuthUserId, ensureFreshSession } from '@/lib/supabase/write'
 import { createAnonClient } from '@/lib/supabase/anon'
 
 export default function EditSeriesPage() {
