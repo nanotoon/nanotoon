@@ -503,7 +503,7 @@ export default function ReaderPage() {
       {/* ─── Panels / Reader ─────────────────────────────────── */}
       <div className={`max-w-[800px] mx-auto p-1.5 md:p-3 transition-opacity duration-200 ${panelFade ? 'opacity-0' : 'opacity-100'}`}>
         {panels ? panels.map((url: string, pi: number) => (
-          <img key={pi} src={url} className="w-full" style={{ marginTop: pi > 0 ? '-4px' : '0' }} alt={`Page ${pi+1}`} />
+          <img key={pi} src={url} loading={pi === 0 ? 'eager' : 'lazy'} className="w-full" style={{ marginTop: pi > 0 ? '-4px' : '0' }} alt={`Page ${pi+1}`} />
         )) : <div className="w-full aspect-[3/4] flex items-center justify-center text-[#52525b] text-sm bg-[#18181b] rounded-xl">{maxCh === 0 ? 'No chapters yet' : 'No pages in this chapter'}</div>}
       </div>
 

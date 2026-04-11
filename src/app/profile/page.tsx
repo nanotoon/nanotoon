@@ -7,9 +7,8 @@ import { Avatar } from '@/components/Avatar'
 import { ShareModal } from '@/components/ShareModal'
 import { useToast } from '@/components/Toast'
 import { useAuth } from '@/contexts/AuthContext'
-import { createClient } from '@/lib/supabase/client'
 import { createAnonClient } from '@/lib/supabase/anon'
-import { ensureFreshSession } from '@/lib/supabase/write'
+import { ensureFreshSession, createWriteClient } from '@/lib/supabase/write'
 import Link from 'next/link'
 
 function fmtNum(n: number) { if (n >= 1e6) return (n/1e6).toFixed(1).replace(/\.0$/,'')+'M'; if (n >= 1e3) return (n/1e3).toFixed(1).replace(/\.0$/,'')+'K'; return n.toString() }
@@ -17,7 +16,6 @@ function fmtNum(n: number) { if (n >= 1e6) return (n/1e6).toFixed(1).replace(/\.
 export default function ProfilePage() {
   const { show } = useToast()
   const { user, profile, refreshProfile, loading: authLoading } = useAuth()
-  const supabase = useMemo(() => createClient(), [])
   const anonDb = useMemo(() => createAnonClient(), [])
   const [showShare, setShowShare] = useState(false)
   const [mySeries, setMySeries] = useState<any[]>([])
@@ -30,10 +28,8 @@ export default function ProfilePage() {
   useEffect(() => {
     if (authLoading) return
     if (!user) { setLoading(false); return }
-    const timeout = setTimeout(() => { if (!c) setLoading(false) }, 8000)
+    const timeout = setTimeout(() => { if (!c) setLoading(false) }, 4000)
     let c = false
-    // FIX: was [user, supabase] but all reads use anonDb — correct dep is anonDb
-    // Also added gallery fetch — profile was only loading series before
     Promise.all([
       anonDb.from('series').select('*').eq('author_id', user.id).order('created_at', { ascending: false }),
       anonDb.from('gallery').select('*').eq('author_id', user.id).order('created_at', { ascending: false }),
@@ -47,7 +43,7 @@ export default function ProfilePage() {
         setFollowingCount(fg.count ?? 0)
         setLoading(false)
       }
-    })
+    }).catch(() => { if (!c) setLoading(false) })
     return () => { c = true; clearTimeout(timeout) }
   }, [user, anonDb]) // FIX: was [user, supabase]
 
@@ -63,7 +59,7 @@ export default function ProfilePage() {
       const res = await fetch('/api/upload', { method: 'POST', body: fd })
       const json = await res.json()
       if (!res.ok || json.error) { show('Upload failed: ' + (json.error || 'Unknown error')); return }
-      await supabase.from('profiles').update({ avatar_url: json.url }).eq('id', user.id)
+      await (createWriteClient() as any).from('profiles').update({ avatar_url: json.url }).eq('id', user.id)
       await refreshProfile(); show('Profile picture updated!'); setTimeout(() => window.location.reload(), 600)
     } catch (err: any) { show('Upload failed: ' + (err?.message || 'Unknown error')) }
   }
@@ -72,7 +68,7 @@ export default function ProfilePage() {
     await ensureFreshSession()
     if (!confirm('Delete this series?')) return
     // FIX: added error handling — was silently failing without surfacing the error
-    const { error } = await supabase.from('series').delete().eq('id', id)
+    const { error } = await (createWriteClient() as any).from('series').delete().eq('id', id)
     if (error) { show('Failed to delete: ' + error.message); return }
     setMySeries(prev => prev.filter(s => s.id !== id))
     show('Series deleted')
@@ -81,7 +77,7 @@ export default function ProfilePage() {
   async function delGallery(id: string) {
     await ensureFreshSession()
     if (!confirm('Delete this gallery item?')) return
-    const { error } = await supabase.from('gallery').delete().eq('id', id)
+    const { error } = await (createWriteClient() as any).from('gallery').delete().eq('id', id)
     if (error) { show('Failed to delete: ' + error.message); return }
     setMyGallery(prev => prev.filter(g => g.id !== id))
     show('Gallery item deleted')

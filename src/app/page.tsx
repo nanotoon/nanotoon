@@ -25,7 +25,7 @@ export default function HomePage() {
     // Safety timeout — never let homepage loading hang
     const safetyTimeout = setTimeout(() => {
       if (!cancelled) { setLoading(false); console.warn('Homepage safety timeout fired') }
-    }, 12000)
+    }, 6000)
     async function load() {
       try {
         setLoading(true)

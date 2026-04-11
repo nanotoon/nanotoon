@@ -20,7 +20,7 @@ export function SeriesCard({ title, slug, author, thumbnailUrl, latestChapter, r
     <Link href={`/series/${slug}`} className="group cursor-pointer block no-underline">
       <div className="relative rounded-xl overflow-hidden bg-[#27272a]">
         {thumbnailUrl ? (
-          <img src={thumbnailUrl} alt={title} className="w-full aspect-[4/5] object-cover group-hover:-translate-y-1.5 transition-transform duration-300" />
+          <img src={thumbnailUrl} alt={title} loading="lazy" className="w-full aspect-[4/5] object-cover group-hover:-translate-y-1.5 transition-transform duration-300" />
         ) : (
           <div className="w-full aspect-[4/5] flex items-center justify-center text-white/10 text-4xl md:text-6xl font-bold group-hover:-translate-y-1.5 transition-transform duration-300"
             style={{ background: `linear-gradient(135deg, ${c1}, ${c2})` }}>

@@ -342,7 +342,7 @@ export default function GalleryDetailPage() {
 
       {/* ─── Image viewer ───────────────────────────────────── */}
       <div className="max-w-[800px] mx-auto p-1.5 md:p-3">
-        {rm==='webtoon' ? imgs.map((url:string,i:number) => <img key={i} src={url} className="w-full" style={{marginTop:i>0?'-4px':'0'}} alt="" />) : (
+        {rm==='webtoon' ? imgs.map((url:string,i:number) => <img key={i} src={url} loading={i === 0 ? 'eager' : 'lazy'} className="w-full" style={{marginTop:i>0?'-4px':'0'}} alt="" />) : (
           <div className="relative">
             {imgs.length>0 && <img src={imgs[page]} className="w-full rounded-lg" alt="" />}
             {imgs.length>1 && <div className="flex flex-col items-center gap-2 mt-3">

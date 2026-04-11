@@ -23,6 +23,7 @@ export function GalleryCard({ item, index }: { item: any; index: number }) {
           <img
             src={thumb}
             alt={item.title}
+            loading="lazy"
             onLoad={(e) => {
               const img = e.currentTarget
               if (img.naturalWidth > img.naturalHeight * 1.2) setIsLandscape(true)

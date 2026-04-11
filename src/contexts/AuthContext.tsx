@@ -1,6 +1,7 @@
 "use client";
 import { createContext, useContext, useEffect, useState, useCallback, useMemo, useRef, type ReactNode } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { createAnonClient } from "@/lib/supabase/anon";
 import type { User } from "@supabase/supabase-js";
 import type { Profile } from "@/lib/supabase/types";
 
@@ -12,14 +13,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const supabase = useMemo(() => createClient(), []);
+  const anonDb = useMemo(() => createAnonClient(), []);
   const initDone = useRef(false);
 
   const fetchProfile = useCallback(async (uid: string) => {
     try {
-      const { data } = await supabase.from("profiles").select("*").eq("id", uid).maybeSingle();
+      // Use anonDb for profile reads — no JWT locks, no hangs
+      const { data } = await anonDb.from("profiles").select("*").eq("id", uid).maybeSingle() as { data: any };
       setProfile((data as Profile) ?? null);
     } catch { setProfile(null); }
-  }, [supabase]);
+  }, [anonDb]);
 
   const refreshProfile = useCallback(async () => { if (user) await fetchProfile(user.id); }, [user, fetchProfile]);
 
@@ -27,34 +30,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (initDone.current) return;
     initDone.current = true;
 
-    const hardTimeout = setTimeout(() => setLoading(false), 6000);
+    // Reduced from 6s to 3s — if auth takes longer, something is wrong
+    const hardTimeout = setTimeout(() => setLoading(false), 3000);
 
     const init = async () => {
       try {
-        // Step 1: Check if we have a session
+        // Use getSession() — reads cookies locally, NO network call.
+        // Token refresh is handled by ensureFreshSession() before writes.
         const { data: { session } } = await supabase.auth.getSession();
 
-        if (!session) {
-          // Not logged in
-          setUser(null); setProfile(null); setLoading(false);
-          clearTimeout(hardTimeout);
-          return;
-        }
-
-        // Step 2: Validate token with getUser() — this runs in the BROWSER
-        // (no Cloudflare CPU limit). It forces token refresh if expired.
-        // This replaces what middleware.getUser() used to do.
-        const { data: { user: validatedUser }, error } = await supabase.auth.getUser();
-
-        if (error || !validatedUser) {
-          // Token is dead — clear everything so queries run as anon
-          console.warn("Token validation failed, clearing session:", error?.message);
-          await supabase.auth.signOut();
+        if (!session?.user) {
           setUser(null); setProfile(null);
         } else {
-          // Token is valid (was refreshed if needed)
-          setUser(validatedUser);
-          await fetchProfile(validatedUser.id);
+          setUser(session.user);
+          await fetchProfile(session.user.id);
         }
       } catch (err) {
         console.warn("Auth init error:", err);
@@ -75,7 +64,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     return () => { clearTimeout(hardTimeout); subscription.unsubscribe(); };
-  }, [supabase, fetchProfile]);
+  }, [supabase, anonDb, fetchProfile]);
 
   const signOut = useCallback(async () => {
     setUser(null); setProfile(null); setLoading(false);
