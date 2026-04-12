@@ -42,6 +42,14 @@ export async function GET(request: Request) {
             handle: handle,
             avatar_url: user.user_metadata?.avatar_url || null,
           });
+
+          // Send welcome notification to new user
+          await supabase.from("notifications").insert({
+            user_id: user.id,
+            actor_id: null,
+            type: "welcome",
+            message: `Welcome to NANOTOON! 🎉 This is a platform built specifically for AI comic, manga, and webtoon creators. Get your series live by uploading your first chapter, or start supporting your favorite creators today!`,
+          });
         }
       }
 
