@@ -20,6 +20,89 @@ function timeAgo(d: string) {
   if (m < 1) return 'just now'; if (m < 60) return m+'m ago'; const h = Math.floor(m/60); if (h < 24) return h+'h ago'; return Math.floor(h/24)+'d ago'
 }
 
+// FIX: CommentItem must be defined at module scope (NOT inside ReaderPage). When it
+// was nested inside the parent component, every keystroke in the reply input caused
+// a new function identity on re-render, which made React unmount & remount the input,
+// stealing focus after every character. Moving it out preserves stable identity.
+type CommentItemProps = {
+  c: any
+  isSeries: boolean
+  isReply?: boolean
+  userId: string | undefined
+  comments: any[]
+  seriesComments: any[]
+  editingId: string | null
+  editText: string
+  setEditText: (v: string) => void
+  setEditingId: (v: string | null) => void
+  editComment: (id: string, isSeries: boolean) => void
+  replyingTo: string | null
+  setReplyingTo: (v: string | null) => void
+  replyText: string
+  setReplyText: (v: string) => void
+  postComment: (isSeries: boolean, parentId?: string) => void
+  toggleCommentLike: (commentId: string, currentCount: number) => void
+  likedComments: Set<string>
+  deleteComment: (id: string, isSeries: boolean) => void
+}
+
+function CommentItem(props: CommentItemProps) {
+  const { c, isSeries, isReply, userId, comments, seriesComments, editingId, editText, setEditText, setEditingId, editComment, replyingTo, setReplyingTo, replyText, setReplyText, postComment, toggleCommentLike, likedComments, deleteComment } = props
+  const isOwn = userId === c.user_id
+  const replies = (isSeries ? seriesComments : comments).filter(r => r.parent_id === c.id)
+  return (
+    <div className={`${isReply ? 'ml-6 md:ml-10 border-l-2 border-[#27272a] pl-3' : ''} mb-3`}>
+      <div className="flex gap-2">
+        {c.profiles?.avatar_url ? <img src={c.profiles.avatar_url} className="w-7 h-7 rounded-full object-cover shrink-0" /> : <Avatar name={c.profiles?.display_name || 'User'} size={28} />}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-medium text-xs">{c.profiles?.display_name || 'User'}</span>
+            {c.created_at && <span className="text-[0.6rem] text-[#52525b]">{timeAgo(c.created_at)}</span>}
+            {c.edited_at && <span className="text-[0.6rem] text-[#52525b] italic">· edited {timeAgo(c.edited_at)}</span>}
+          </div>
+          {editingId === c.id ? (
+            <div className="mt-1">
+              <textarea value={editText} onChange={e => setEditText(e.target.value)} rows={2}
+                className="w-full bg-[#27272a] border border-[#3f3f46] rounded-lg p-2 text-[#e4e4e7] text-xs outline-none focus:border-[#a855f7] font-[inherit]" />
+              <div className="flex gap-1.5 mt-1">
+                <button onClick={() => editComment(c.id, isSeries)} className="text-[0.65rem] text-[#c084fc] bg-transparent border-none cursor-pointer">Save</button>
+                <button onClick={() => setEditingId(null)} className="text-[0.65rem] text-[#71717a] bg-transparent border-none cursor-pointer">Cancel</button>
+              </div>
+            </div>
+          ) : (
+            <div className="text-[#d4d4d8] text-[0.79rem] mt-0.5">{c.body}</div>
+          )}
+          <div className="flex gap-2.5 mt-1">
+            <button onClick={() => { setReplyingTo(replyingTo === c.id ? null : c.id); setReplyText('') }}
+              className="text-[0.65rem] text-[#71717a] bg-transparent border-none cursor-pointer hover:text-[#c084fc]">Reply</button>
+            <button onClick={() => toggleCommentLike(c.id, c.likes_count ?? 0)}
+              className={`text-[0.65rem] bg-transparent border-none cursor-pointer flex items-center gap-0.5 ${likedComments.has(c.id) ? 'text-[#f87171]' : 'text-[#71717a] hover:text-[#f87171]'}`}>
+              ♥ {c.likes_count ?? 0}
+            </button>
+            {isOwn && editingId !== c.id && (
+              <>
+                <button onClick={() => { setEditingId(c.id); setEditText(c.body) }}
+                  className="text-[0.65rem] text-[#71717a] bg-transparent border-none cursor-pointer hover:text-[#c084fc]">Edit</button>
+                <button onClick={() => deleteComment(c.id, isSeries)}
+                  className="text-[0.65rem] text-[#71717a] bg-transparent border-none cursor-pointer hover:text-[#f87171]">Delete</button>
+              </>
+            )}
+          </div>
+          {replyingTo === c.id && (
+            <div className="mt-2 flex gap-1.5">
+              <input value={replyText} onChange={e => setReplyText(e.target.value)} placeholder="Write a reply..."
+                className="flex-1 bg-[#27272a] border border-[#3f3f46] rounded-lg p-1.5 text-[#e4e4e7] text-xs outline-none focus:border-[#a855f7]"
+                onKeyDown={e => e.key === 'Enter' && postComment(isSeries, c.id)} />
+              <button onClick={() => postComment(isSeries, c.id)} className="px-2.5 py-1 bg-[#7c3aed] text-white rounded-lg text-xs border-none cursor-pointer">Reply</button>
+            </div>
+          )}
+        </div>
+      </div>
+      {replies.map(r => <CommentItem key={r.id} {...props} c={r} isReply />)}
+    </div>
+  )
+}
+
 export default function ReaderPage() {
   const params = useParams()
   const { show } = useToast()
@@ -289,62 +372,6 @@ export default function ReaderPage() {
     setPanelFade(true); setTimeout(() => { setCurrentCh(ch); setCurrentPage(0); setShowChapters(false); setPanelFade(false); show(`Chapter ${ch}`) }, 200)
   }
 
-  function CommentItem({ c, isSeries, isReply }: { c: any; isSeries: boolean; isReply?: boolean }) {
-    const isOwn = user?.id === c.user_id
-    const replies = (isSeries ? seriesComments : comments).filter(r => r.parent_id === c.id)
-    return (
-      <div className={`${isReply ? 'ml-6 md:ml-10 border-l-2 border-[#27272a] pl-3' : ''} mb-3`}>
-        <div className="flex gap-2">
-          {c.profiles?.avatar_url ? <img src={c.profiles.avatar_url} className="w-7 h-7 rounded-full object-cover shrink-0" /> : <Avatar name={c.profiles?.display_name || 'User'} size={28} />}
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-medium text-xs">{c.profiles?.display_name || 'User'}</span>
-              {c.created_at && <span className="text-[0.6rem] text-[#52525b]">{timeAgo(c.created_at)}</span>}
-              {c.edited_at && <span className="text-[0.6rem] text-[#52525b] italic">· edited {timeAgo(c.edited_at)}</span>}
-            </div>
-            {editingId === c.id ? (
-              <div className="mt-1">
-                <textarea value={editText} onChange={e => setEditText(e.target.value)} rows={2}
-                  className="w-full bg-[#27272a] border border-[#3f3f46] rounded-lg p-2 text-[#e4e4e7] text-xs outline-none focus:border-[#a855f7] font-[inherit]" />
-                <div className="flex gap-1.5 mt-1">
-                  <button onClick={() => editComment(c.id, isSeries)} className="text-[0.65rem] text-[#c084fc] bg-transparent border-none cursor-pointer">Save</button>
-                  <button onClick={() => setEditingId(null)} className="text-[0.65rem] text-[#71717a] bg-transparent border-none cursor-pointer">Cancel</button>
-                </div>
-              </div>
-            ) : (
-              <div className="text-[#d4d4d8] text-[0.79rem] mt-0.5">{c.body}</div>
-            )}
-            <div className="flex gap-2.5 mt-1">
-              <button onClick={() => { setReplyingTo(replyingTo === c.id ? null : c.id); setReplyText('') }}
-                className="text-[0.65rem] text-[#71717a] bg-transparent border-none cursor-pointer hover:text-[#c084fc]">Reply</button>
-              <button onClick={() => toggleCommentLike(c.id, c.likes_count ?? 0)}
-                className={`text-[0.65rem] bg-transparent border-none cursor-pointer flex items-center gap-0.5 ${likedComments.has(c.id) ? 'text-[#f87171]' : 'text-[#71717a] hover:text-[#f87171]'}`}>
-                ♥ {c.likes_count ?? 0}
-              </button>
-              {isOwn && editingId !== c.id && (
-                <>
-                  <button onClick={() => { setEditingId(c.id); setEditText(c.body) }}
-                    className="text-[0.65rem] text-[#71717a] bg-transparent border-none cursor-pointer hover:text-[#c084fc]">Edit</button>
-                  <button onClick={() => deleteComment(c.id, isSeries)}
-                    className="text-[0.65rem] text-[#71717a] bg-transparent border-none cursor-pointer hover:text-[#f87171]">Delete</button>
-                </>
-              )}
-            </div>
-            {replyingTo === c.id && (
-              <div className="mt-2 flex gap-1.5">
-                <input value={replyText} onChange={e => setReplyText(e.target.value)} placeholder="Write a reply..."
-                  className="flex-1 bg-[#27272a] border border-[#3f3f46] rounded-lg p-1.5 text-[#e4e4e7] text-xs outline-none focus:border-[#a855f7]"
-                  onKeyDown={e => e.key === 'Enter' && postComment(isSeries, c.id)} />
-                <button onClick={() => postComment(isSeries, c.id)} className="px-2.5 py-1 bg-[#7c3aed] text-white rounded-lg text-xs border-none cursor-pointer">Reply</button>
-              </div>
-            )}
-          </div>
-        </div>
-        {replies.map(r => <CommentItem key={r.id} c={r} isSeries={isSeries} isReply />)}
-      </div>
-    )
-  }
-
   if (loading) return <div className="min-h-screen"><LoadingSpinner /></div>
   if (!series) return <div className="min-h-screen flex items-center justify-center text-[#71717a]">Series not found</div>
 
@@ -372,6 +399,12 @@ export default function ReaderPage() {
   const authorName = series.profiles?.display_name || 'Unknown'
   const topLevelComments = comments.filter(c => !c.parent_id)
   const topLevelSeriesComments = seriesComments.filter(c => !c.parent_id)
+  const commentItemProps = {
+    userId: user?.id, comments, seriesComments,
+    editingId, editText, setEditText, setEditingId, editComment,
+    replyingTo, setReplyingTo, replyText, setReplyText,
+    postComment, toggleCommentLike, likedComments, deleteComment,
+  }
 
   return (
     <div id="reader-scroll" className="min-h-screen bg-black">
@@ -596,7 +629,7 @@ export default function ReaderPage() {
       <div className="max-w-[800px] mx-auto mt-7 bg-[#18181b] rounded-2xl p-4 mb-8 mx-3">
         <h3 className="font-medium text-sm mb-3">Chapter {currentCh} Comments ({comments.length})</h3>
         {topLevelComments.length === 0 && <p className="text-[#52525b] text-xs mb-3">No comments yet. Be the first!</p>}
-        {topLevelComments.map(c => <CommentItem key={c.id} c={c} isSeries={false} />)}
+        {topLevelComments.map(c => <CommentItem key={c.id} c={c} isSeries={false} {...commentItemProps} />)}
         <textarea value={commentText} onChange={e => setCommentText(e.target.value)} placeholder="Write your comment..."
           className="w-full bg-[#27272a] border border-[#3f3f46] rounded-lg p-2.5 h-16 text-[#e4e4e7] text-sm resize-y outline-none focus:border-[#a855f7] font-[inherit]" />
         <div className="flex justify-end mt-2">
@@ -606,15 +639,15 @@ export default function ReaderPage() {
 
       {/* Series Comments Overlay */}
       {showSeriesComments && (
-        <div className="fixed inset-0 bg-black/90 z-[110] flex items-center justify-center" onClick={() => setShowSeriesComments(false)}>
-          <div className="bg-[#18181b] rounded-2xl w-full max-w-[520px] mx-3.5 max-h-[84vh] overflow-hidden flex flex-col border border-[#27272a]" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black/90 z-[110] flex items-center justify-center">
+          <div className="bg-[#18181b] rounded-2xl w-full max-w-[520px] mx-3.5 max-h-[84vh] overflow-hidden flex flex-col border border-[#27272a]">
             <div className="p-3.5 border-b border-[#27272a] flex justify-between items-center shrink-0">
               <h3 className="font-semibold text-sm">Series Comments ({seriesComments.length})</h3>
               <button onClick={() => setShowSeriesComments(false)} className="bg-[#27272a] border-none w-6 h-6 rounded-md cursor-pointer text-[#a1a1aa] text-base flex items-center justify-center">×</button>
             </div>
             <div className="p-3.5 overflow-y-auto flex-1">
               {topLevelSeriesComments.length === 0 && <p className="text-[#52525b] text-xs">No comments yet.</p>}
-              {topLevelSeriesComments.map(c => <CommentItem key={c.id} c={c} isSeries={true} />)}
+              {topLevelSeriesComments.map(c => <CommentItem key={c.id} c={c} isSeries={true} {...commentItemProps} />)}
             </div>
             <div className="p-3.5 border-t border-[#27272a] shrink-0">
               <textarea value={seriesCommentText} onChange={e => setSeriesCommentText(e.target.value)} placeholder="Write about this series..."
