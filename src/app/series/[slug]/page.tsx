@@ -53,10 +53,20 @@ function CommentItem(props: CommentItemProps) {
   return (
     <div className={`${isReply ? 'ml-6 md:ml-10 border-l-2 border-[#27272a] pl-3' : ''} mb-3`}>
       <div className="flex gap-2">
-        {c.profiles?.avatar_url ? <img src={c.profiles.avatar_url} className="w-7 h-7 rounded-full object-cover shrink-0" /> : <Avatar name={c.profiles?.display_name || 'User'} size={28} />}
+        {c.profiles?.handle ? (
+          <Link href={`/user/${c.profiles.handle}`} className="shrink-0 no-underline">
+            {c.profiles?.avatar_url ? <img src={c.profiles.avatar_url} className="w-7 h-7 rounded-full object-cover shrink-0" /> : <Avatar name={c.profiles?.display_name || 'User'} size={28} />}
+          </Link>
+        ) : (
+          c.profiles?.avatar_url ? <img src={c.profiles.avatar_url} className="w-7 h-7 rounded-full object-cover shrink-0" /> : <Avatar name={c.profiles?.display_name || 'User'} size={28} />
+        )}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-medium text-xs">{c.profiles?.display_name || 'User'}</span>
+            {c.profiles?.handle ? (
+              <Link href={`/user/${c.profiles.handle}`} className="font-medium text-xs text-[#e4e4e7] hover:text-[#c084fc] no-underline">{c.profiles?.display_name || 'User'}</Link>
+            ) : (
+              <span className="font-medium text-xs">{c.profiles?.display_name || 'User'}</span>
+            )}
             {c.created_at && <span className="text-[0.6rem] text-[#52525b]">{timeAgo(c.created_at)}</span>}
             {c.edited_at && <span className="text-[0.6rem] text-[#52525b] italic">· edited {timeAgo(c.edited_at)}</span>}
           </div>
@@ -466,7 +476,7 @@ export default function ReaderPage() {
           {/* Series info — enlarged */}
           <div className="flex-1 min-w-0">
             <div className="font-bold text-2xl leading-tight">{series.title}</div>
-            <div className="text-[#c084fc] text-base mt-0.5">by {authorName}</div>
+            <div className="text-[#c084fc] text-base mt-0.5">by {series.profiles?.handle ? <Link href={`/user/${series.profiles.handle}`} className="text-[#c084fc] hover:underline no-underline">{authorName}</Link> : authorName}</div>
             <div className="text-base text-[#a1a1aa] mt-1 line-clamp-2">{series.description}</div>
             <div className="flex items-center gap-3 mt-2 flex-wrap">
               <span className="flex items-center gap-1 text-base text-[#71717a]">
@@ -481,6 +491,12 @@ export default function ReaderPage() {
                 className="flex items-center gap-1 px-4 py-1.5 rounded-lg border border-[#3f3f46] cursor-pointer text-base text-[#a1a1aa] hover:border-[#a855f7] bg-transparent">
                 Share
               </button>
+              {currentChData?.rating === 'Mature' && (
+                <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-400 text-sm font-medium">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="shrink-0"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                  Warning: This content may contain mature themes.
+                </span>
+              )}
             </div>
           </div>
 
@@ -526,7 +542,7 @@ export default function ReaderPage() {
             {/* Info: title, by author, description wraps naturally */}
             <div className="flex-1 min-w-0">
               <div className="font-bold text-sm leading-tight">{series.title}</div>
-              <div className="text-[#c084fc] text-xs mt-0.5">by {authorName}</div>
+              <div className="text-[#c084fc] text-xs mt-0.5">by {series.profiles?.handle ? <Link href={`/user/${series.profiles.handle}`} className="text-[#c084fc] hover:underline no-underline">{authorName}</Link> : authorName}</div>
               <div className="text-xs text-[#a1a1aa] mt-1 break-words">{series.description}</div>
             </div>
 
@@ -600,6 +616,16 @@ export default function ReaderPage() {
           </div>
         )}
       </div>
+
+      {/* ─── Mobile-only mature warning bar (desktop has it inline next to Share) ─── */}
+      {currentChData?.rating === 'Mature' && (
+        <div className="md:hidden max-w-[800px] mx-auto px-3 mt-1.5">
+          <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-400 text-[0.68rem] font-medium">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="shrink-0"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            Warning: This content may contain mature themes.
+          </div>
+        </div>
+      )}
 
       {/* ─── Panels / Reader ─────────────────────────────────── */}
       <div className={`max-w-[800px] mx-auto p-1.5 md:p-3 transition-opacity duration-200 ${panelFade ? 'opacity-0' : 'opacity-100'}`}>

@@ -1,6 +1,7 @@
 'use client'
 import { LoadingSpinner } from '@/components/LoadingSpinner'
 import { useState, useEffect, useMemo } from 'react'
+import Link from 'next/link'
 import { SeriesCard } from '@/components/SeriesCard'
 import { Avatar } from '@/components/Avatar'
 import { useToast } from '@/components/Toast'
@@ -94,14 +95,16 @@ export default function FollowingPage() {
             if (!p) return null
             return (
               <div key={f.following_id} className="bg-[#18181b] rounded-xl md:rounded-2xl p-2 md:p-3 flex items-center gap-2 md:gap-2.5 border border-[#27272a]">
-                {p.avatar_url
-                  ? <img src={p.avatar_url} className="w-7 h-7 md:w-9 md:h-9 rounded-full object-cover" alt={p.display_name} />
-                  : <Avatar name={p.display_name} size={36} className="w-7 h-7 md:w-9 md:h-9" />
-                }
-                <div className="flex-1 min-w-0">
-                  <div className="font-medium text-[0.7rem] md:text-sm truncate">{p.display_name}</div>
-                  <div className="text-[0.6rem] md:text-[0.7rem] text-[#71717a] truncate">@{p.handle}</div>
-                </div>
+                <Link href={`/user/${p.handle}`} className="flex items-center gap-2 md:gap-2.5 flex-1 min-w-0 no-underline text-inherit">
+                  {p.avatar_url
+                    ? <img src={p.avatar_url} className="w-7 h-7 md:w-9 md:h-9 rounded-full object-cover" alt={p.display_name} />
+                    : <Avatar name={p.display_name} size={36} className="w-7 h-7 md:w-9 md:h-9" />
+                  }
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium text-[0.7rem] md:text-sm truncate">{p.display_name}</div>
+                    <div className="text-[0.6rem] md:text-[0.7rem] text-[#71717a] truncate">@{p.handle}</div>
+                  </div>
+                </Link>
                 <button
                   onClick={() => unfollow(f.following_id, p.display_name)}
                   className="text-[0.58rem] md:text-[0.68rem] text-[#71717a] bg-transparent border border-[#3f3f46] rounded-md px-1.5 md:px-2 py-0.5 md:py-1 cursor-pointer hover:border-[#ef4444] hover:text-[#f87171] shrink-0"

@@ -156,7 +156,23 @@ export default function NotificationsPage() {
               ) : n.type === 'welcome' ? (
                 <div className="w-8 h-8 rounded-full bg-purple-500/10 flex items-center justify-center shrink-0 text-sm">🎉</div>
               ) : n.actor?.avatar_url ? (
-                <img src={n.actor.avatar_url} className="w-8 h-8 rounded-full object-cover shrink-0" alt="" />
+                n.actor?.handle ? (
+                  <img
+                    src={n.actor.avatar_url}
+                    className="w-8 h-8 rounded-full object-cover shrink-0 cursor-pointer"
+                    alt=""
+                    onClick={(e) => { e.stopPropagation(); router.push(`/user/${n.actor.handle}`) }}
+                  />
+                ) : (
+                  <img src={n.actor.avatar_url} className="w-8 h-8 rounded-full object-cover shrink-0" alt="" />
+                )
+              ) : n.actor?.handle ? (
+                <div
+                  className="shrink-0 cursor-pointer"
+                  onClick={(e) => { e.stopPropagation(); router.push(`/user/${n.actor.handle}`) }}
+                >
+                  <Avatar name={n.actor?.display_name || 'Someone'} size={32} />
+                </div>
               ) : (
                 <Avatar name={n.actor?.display_name || 'Someone'} size={32} />
               )}
@@ -164,6 +180,13 @@ export default function NotificationsPage() {
                 <div className={`text-sm ${n.read ? 'text-[#a1a1aa]' : 'text-[#e4e4e7]'}`}>
                   {n.type === 'removal' || n.type === 'restoration' || n.type === 'welcome' ? (
                     <span>{n.message}</span>
+                  ) : n.actor?.handle ? (
+                    <>
+                      <strong
+                        onClick={(e) => { e.stopPropagation(); router.push(`/user/${n.actor.handle}`) }}
+                        className="cursor-pointer hover:text-[#c084fc]"
+                      >{n.actor?.display_name || 'Someone'}</strong> {n.message}
+                    </>
                   ) : (
                     <><strong>{n.actor?.display_name || 'Someone'}</strong> {n.message}</>
                   )}

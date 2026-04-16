@@ -37,10 +37,10 @@ export default function FollowersPage() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           {followers.map(f => { const p = f.profiles; if (!p) return null; return (
-            <div key={f.follower_id} className="bg-[#18181b] rounded-2xl p-3 flex items-center gap-2.5 border border-[#27272a]">
+            <Link key={f.follower_id} href={`/user/${p.handle}`} className="bg-[#18181b] rounded-2xl p-3 flex items-center gap-2.5 border border-[#27272a] no-underline hover:border-[#a855f7] text-inherit">
               {p.avatar_url ? <img src={p.avatar_url} className="w-9 h-9 rounded-full object-cover" /> : <Avatar name={p.display_name} size={36} />}
               <div className="flex-1 min-w-0"><div className="font-medium text-sm">{p.display_name}</div><div className="text-[0.7rem] text-[#71717a]">@{p.handle}</div></div>
-            </div>
+            </Link>
           )})}
         </div>
       )}
