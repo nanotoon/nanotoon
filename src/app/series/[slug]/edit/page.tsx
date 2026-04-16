@@ -291,7 +291,7 @@ export default function EditSeriesPage() {
         if (followers && followers.length > 0) {
           const rows = followers.map((f: any) => ({
             user_id: f.follower_id, actor_id: authorId, type: 'new_chapter',
-            message: `"${series.title}" is out`, series_id: series.id,
+            message: `${series.title}: ${newChTitle.trim()} is out`, series_id: series.id,
           }))
           await (createWriteClient() as any).from('notifications').insert(rows)
         }

@@ -221,7 +221,7 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
         if (followers && followers.length > 0) {
           const rows = followers.map((f: any) => ({
             user_id: f.follower_id, actor_id: authorId, type: 'new_chapter',
-            message: `"${seriesTitleForNotif}" is out`, series_id: seriesId,
+            message: `${seriesTitleForNotif}: ${chapterTitle} is out`, series_id: seriesId,
           }))
           await (createWriteClient() as any).from('notifications').insert(rows)
         }
