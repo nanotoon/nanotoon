@@ -43,26 +43,10 @@ export default function RegisterPage() {
       return
     }
 
-    // FIX: Insert in-app welcome notification for new email/password users
-    // (OAuth users get this from the callback route; email/password users were missing it).
-    // Fire-and-forget — don't block signup on it.
-    if (data.user) {
-      supabase.from('notifications').insert({
-        user_id: data.user.id,
-        actor_id: null,
-        type: 'welcome',
-        message: `Welcome to NANOTOON! 🎉 This is a platform built specifically for AI comic, manga, and webtoon creators. Get your series live by uploading your first chapter, or start supporting your favorite creators today!`,
-      } as any).then(() => {}, () => {/* silently ignore */})
-    }
-
-    // Send welcome email (fire and forget — won't block the user)
-    try {
-      fetch('/api/send-welcome', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, displayName: name.trim() }),
-      }).catch(() => {/* silently ignore */})
-    } catch {/* silently ignore */}
+    // NOTE: Welcome notification + welcome email are now created/sent server-side
+    // in /auth/callback after the user clicks the confirmation link in their email.
+    // That's the correct place because the user has a valid session there, so RLS
+    // allows the notification insert and we know the email address is real.
 
     // Email confirmation required
     if (data.user && !data.session) {
