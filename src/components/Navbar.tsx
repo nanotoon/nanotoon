@@ -26,7 +26,6 @@ export function Navbar() {
   const publicTabs = [
     { href: '/', label: 'Read' },
     { href: '/categories', label: 'Categories' },
-    { href: '/gallery', label: 'Gallery' },
   ]
   const privateTabs = [
     { href: '/favorites', label: 'Favorites' },

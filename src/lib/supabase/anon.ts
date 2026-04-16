@@ -2,7 +2,7 @@
 
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 
-// Anon-only client for PUBLIC reads (series, gallery, categories, etc.)
+// Anon-only client for PUBLIC reads (series, categories, etc.)
 // This client NEVER has a JWT attached, so queries always work
 // regardless of auth state. Uses the same anon key but without
 // the SSR auth session management that causes hangs.

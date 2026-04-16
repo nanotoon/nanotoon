@@ -7,7 +7,6 @@ import { createAnonClient } from '@/lib/supabase/anon'
 
 const MAX_FILE = 10 * 1024 * 1024
 const MAX_TOTAL_SERIES = 150 * 1024 * 1024
-const MAX_TOTAL_GALLERY = 50 * 1024 * 1024
 const MATURE_TEXT = "Violence & Dark Themes: Intense graphic violence and realistic blood are permitted in Mature-tagged chapters. Content solely depicting sadistic torture without narrative purpose is prohibited.\n\nNudity — Non-sexual nudity is allowed if genitalia are fully obscured/censored. Pornographic content is strictly prohibited.\n\nProhibited:\n• Sexual content involving minors — zero tolerance\n• Instructions for making drugs, explosives, or weapons\n• Content promoting self-harm or suicide\n• Malware, scams, or phishing\n• Content inciting real-world violence"
 
 // ─── Compress image to WebP ─────────────────────────────────
@@ -61,7 +60,6 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
   const { user } = useAuth()
   const anonDb = useMemo(() => createAnonClient(), [])
   const [step, setStep] = useState<'choose' | 'existing' | 'form'>('choose')
-  const [uploadType, setUploadType] = useState<'series' | 'gallery'>('series')
   const [mode, setMode] = useState<'new' | 'existing'>('new')
   const [mySeries, setMySeries] = useState<any[]>([])
   const [loadingSeries, setLoadingSeries] = useState(false)
@@ -84,13 +82,7 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
   const [isMobile, setIsMobile] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const thumbRef = useRef<HTMLInputElement>(null)
-  const [gTitle, setGTitle] = useState('')
-  const [gDesc, setGDesc] = useState('')
-  const [gMature, setGMature] = useState(false)
-  const [gTags, setGTags] = useState('')
   const [dragging, setDragging] = useState(false)
-  const [gReadMode, setGReadMode] = useState<'horizontal' | 'webtoon'>('horizontal')
-  const [gReadDir, setGReadDir] = useState<'ltr' | 'rtl'>('ltr')
 
   useEffect(() => { const c = () => setIsMobile(window.innerWidth < 768); c(); window.addEventListener('resize', c); return () => window.removeEventListener('resize', c) }, [])
 
@@ -108,13 +100,9 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
       .then(({ data }: any) => setChapterNumber(data?.length > 0 ? data[0].chapter_number + 1 : 1))
   }, [selectedSeriesId, anonDb])
 
-  const canPubSeries = mode === 'existing' ? !!(rating && chapterTitle && selectedSeriesId) : !!(format && rating && chapterTitle && seriesTitle)
-  const canPubGallery = !!(gTitle.trim() && files.length > 0)
-  const canPublish = uploadType === 'gallery' ? canPubGallery : canPubSeries
+  const canPublish = mode === 'existing' ? !!(rating && chapterTitle && selectedSeriesId) : !!(format && rating && chapterTitle && seriesTitle)
 
   function addFiles(newFiles: File[]) {
-    const maxTotal = uploadType === 'gallery' ? MAX_TOTAL_GALLERY : MAX_TOTAL_SERIES
-    const maxLabel = uploadType === 'gallery' ? '50MB' : '150MB'
     const nf = newFiles.filter(f => {
       if (!f.type.match(/image\/(jpeg|png|webp)/)) { onToast(f.name + ' is not a supported image'); return false }
       if (f.size > MAX_FILE) { onToast(f.name + ' exceeds 10MB'); return false }
@@ -122,7 +110,7 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
     })
     const combined = [...files, ...nf].slice(0, 200)
     const totalSize = combined.reduce((s, f) => s + f.size, 0)
-    if (totalSize > maxTotal) { onToast('Total exceeds ' + maxLabel + '! Remove some files.'); return }
+    if (totalSize > MAX_TOTAL_SERIES) { onToast('Total exceeds 150MB! Remove some files.'); return }
     setFiles(combined)
   }
 
@@ -167,18 +155,15 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
   async function submit() {
     if (!user || !canPublish) return
     if (files.length === 0) { setUploadError('Please select at least one image'); onToast('Please select at least one image'); return }
-    if (uploadType === 'series' && files.length < 2) { setUploadError('Please select at least 2 pages for the chapter'); onToast('At least 2 pages required'); return }
+    if (files.length < 2) { setUploadError('Please select at least 2 pages for the chapter'); onToast('At least 2 pages required'); return }
     const totalSize = files.reduce((s, f) => s + f.size, 0)
-    if (uploadType === 'series' && totalSize > MAX_TOTAL_SERIES) { setUploadError('Total pages exceed 150MB'); onToast('Total pages exceed 150MB'); return }
-    if (uploadType === 'gallery' && files.length === 1 && files[0].size > 5 * 1024 * 1024) { setUploadError('Single image must be under 5MB'); onToast('Single image must be under 5MB'); return }
-    if (uploadType === 'gallery' && totalSize > MAX_TOTAL_GALLERY) { setUploadError('Total images exceed 50MB'); onToast('Total images exceed 50MB'); return }
+    if (totalSize > MAX_TOTAL_SERIES) { setUploadError('Total pages exceed 150MB'); onToast('Total pages exceed 150MB'); return }
     setUploading(true); setUploadError(''); setProgress('Preparing...')
     try {
       await ensureFreshSession()
       await ensureProfile()
       setProgress('Starting upload...')
-      if (uploadType === 'gallery') await doGalleryUpload()
-      else await doSeriesUpload()
+      await doSeriesUpload()
     } catch (err: any) {
       console.error('Upload error:', err)
       const msg = err?.message || 'Unexpected error'
@@ -229,39 +214,12 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
     onToast('Chapter published! 🎉'); onClose(); setTimeout(() => window.location.reload(), 600)
   }
 
-  async function doGalleryUpload() {
-    const imageUrls: string[] = []
-    for (let i = 0; i < files.length; i++) {
-      setProgress('Compressing image ' + (i + 1) + '/' + files.length + '...')
-      const compressed = await compressImage(files[i], 1200, 0.85)
-      setProgress('Uploading image ' + (i + 1) + '/' + files.length + '...')
-      const path = 'gallery/' + getAuthUserId()! + '/' + Date.now() + '_' + i + '.webp'
-      const url = await uploadToR2(compressed, path)
-      imageUrls.push(url)
-    }
-    let thumbnailUrl: string | null = null
-    if (files.length > 1 && thumbFile) {
-      const compressed = await compressImage(thumbFile, 1200, 0.85)
-      const path = 'gallery/' + getAuthUserId()! + '/thumb_' + Date.now() + '.webp'
-      try { thumbnailUrl = await uploadToR2(compressed, path) } catch { /* skip */ }
-    }
-    setProgress('Saving...')
-    const { error } = await (createWriteClient() as any).from('gallery').insert({
-      title: gTitle.trim(), description: gDesc || null, image_urls: imageUrls,
-      thumbnail_url: thumbnailUrl, author_id: getAuthUserId()!, is_mature: gMature,
-      tags: gTags ? gTags.split(',').map((t: string) => t.trim()).filter(Boolean) : [],
-      reading_mode: gReadMode, reading_direction: gReadMode === 'horizontal' ? gReadDir : 'ltr',
-    })
-    if (error) throw new Error(error.message)
-    onToast('Gallery published! 🎉'); onClose(); setTimeout(() => window.location.reload(), 600)
-  }
-
   return (
     <div className="fixed inset-0 bg-black/90 z-[200] flex items-start justify-center overflow-y-auto p-4 pb-10">
       <div className={'bg-[#18181b] rounded-2xl w-full border border-[#27272a] ' + (step === 'choose' ? 'max-w-[600px] md:max-w-[700px]' : 'max-w-[600px] md:max-w-[700px]') + (step === 'form' ? ' md:min-h-[calc(100vh-80px)]' : '')}>
         <div className="p-3.5 border-b border-[#27272a] flex justify-between items-center sticky top-0 bg-[#18181b] z-10 rounded-t-2xl">
           <h2 className="font-semibold text-base">
-            {step === 'form' && uploadType === 'gallery' ? 'Upload to Gallery' : step === 'form' && mode === 'existing' ? 'Add Chapter' : step === 'form' ? 'New Series' : 'Upload'}
+            {step === 'form' && mode === 'existing' ? 'Add Chapter' : step === 'form' ? 'New Series' : 'Upload'}
           </h2>
           <button onClick={onClose} className="bg-[#27272a] border-none w-6 h-6 rounded-md cursor-pointer text-[#a1a1aa] text-base flex items-center justify-center hover:text-white">&times;</button>
         </div>
@@ -269,21 +227,15 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
         {step === 'choose' && (
           <div className="p-4 md:p-6 flex flex-col gap-3 md:gap-4">
             <h3 className="text-sm text-[#71717a]">Series</h3>
-            <button onClick={() => { setUploadType('series'); setMode('new'); setStep('form') }}
+            <button onClick={() => { setMode('new'); setStep('form') }}
               className="w-full p-4 md:p-6 border border-[#3f3f46] rounded-xl bg-transparent text-left cursor-pointer hover:border-[#a855f7]">
               <div className="font-semibold text-sm md:text-lg mb-0.5">📁 Create a new series</div>
               <div className="text-xs md:text-base text-[#71717a]">Upload the first chapter of a brand new series</div>
             </button>
-            <button onClick={() => { setUploadType('series'); setMode('existing'); setStep('existing') }}
+            <button onClick={() => { setMode('existing'); setStep('existing') }}
               className="w-full p-4 md:p-6 border border-[#3f3f46] rounded-xl bg-transparent text-left cursor-pointer hover:border-[#a855f7]">
               <div className="font-semibold text-sm md:text-lg mb-0.5">➕ Add chapter to existing series</div>
               <div className="text-xs md:text-base text-[#71717a]">Upload a new chapter to one of your current series</div>
-            </button>
-            <h3 className="text-sm text-[#71717a] mt-2">Gallery</h3>
-            <button onClick={() => { setUploadType('gallery'); setStep('form') }}
-              className="w-full p-4 md:p-6 border border-[#3f3f46] rounded-xl bg-transparent text-left cursor-pointer hover:border-[#a855f7]">
-              <div className="font-semibold text-sm md:text-lg mb-0.5">🎨 Upload to Gallery</div>
-              <div className="text-xs md:text-base text-[#71717a]">Single artwork or album</div>
             </button>
           </div>
         )}
@@ -306,37 +258,7 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
           </div>
         )}
 
-        {step === 'form' && uploadType === 'gallery' && (<>
-          <div className="p-4 flex flex-col gap-3">
-            {uploadError && <div className="bg-red-500/10 border border-red-500/30 text-red-400 text-xs rounded-xl p-2.5">{uploadError}</div>}
-            <div><label className="block text-xs text-[#71717a] mb-1">Title *</label><input value={gTitle} onChange={e => setGTitle(e.target.value)} placeholder="My Artwork" className="w-full bg-[#27272a] border border-[#3f3f46] rounded-lg p-2 text-[#e4e4e7] text-sm outline-none focus:border-[#a855f7]" /></div>
-            <div><label className="block text-xs text-[#71717a] mb-1">Description <span className="text-[#52525b]">(max 80 words)</span></label><textarea value={gDesc} onChange={e => { const words = e.target.value.trim().split(/\s+/).filter(Boolean); if (words.length <= 80) setGDesc(e.target.value); else setGDesc(words.slice(0,80).join(' ')) }} rows={2} placeholder="About this artwork..." className="w-full bg-[#27272a] border border-[#3f3f46] rounded-lg p-2 text-[#e4e4e7] text-sm outline-none resize-y font-[inherit] focus:border-[#a855f7]" /><div className="text-right text-[0.65rem] text-[#52525b] mt-0.5">{gDesc.trim().split(/\s+/).filter(Boolean).length}/80 words</div></div>
-            <div><label className="block text-xs text-[#71717a] mb-1">Tags <span className="text-[#52525b]">(comma separated)</span></label><input value={gTags} onChange={e => setGTags(e.target.value)} placeholder="fantasy, dark" className="w-full bg-[#27272a] border border-[#3f3f46] rounded-lg p-2 text-[#e4e4e7] text-sm outline-none focus:border-[#a855f7]" /></div>
-            <div className="flex items-center gap-2"><label className="text-xs text-[#71717a]">Mature</label><MatureTip mobile={isMobile} /><button onClick={() => setGMature(!gMature)} className={'w-9 h-5 rounded-full border-none cursor-pointer relative shrink-0 ' + (gMature ? 'bg-amber-500' : 'bg-[#3f3f46]')}><span className={'absolute top-[1.5px] w-4 h-4 bg-white rounded-full transition-all ' + (gMature ? 'right-[2px]' : 'left-[1.5px]')}></span></button></div>
-            {files.length > 1 && (<div><label className="block text-xs text-[#71717a] mb-1.5">Reading Mode</label><div className="flex gap-1.5">
-              <button onClick={() => setGReadMode('horizontal')} className={'px-3 py-1.5 rounded-lg cursor-pointer text-xs font-medium border ' + (gReadMode === 'horizontal' ? 'border-[#a855f7] text-[#c084fc] bg-purple-500/10' : 'border-[#3f3f46] text-[#71717a] bg-transparent')}>◀▶ Horizontal</button>
-              <button onClick={() => setGReadMode('webtoon')} className={'px-3 py-1.5 rounded-lg cursor-pointer text-xs font-medium border ' + (gReadMode === 'webtoon' ? 'border-[#a855f7] text-[#c084fc] bg-purple-500/10' : 'border-[#3f3f46] text-[#71717a] bg-transparent')}>▼ Webtoon</button>
-            </div></div>)}
-            {files.length > 1 && gReadMode === 'horizontal' && (<div><label className="block text-xs text-[#71717a] mb-1.5">Reading Direction</label><div className="flex gap-1.5">
-              <button onClick={() => setGReadDir('ltr')} className={'px-3 py-1.5 rounded-lg cursor-pointer text-xs font-medium border ' + (gReadDir === 'ltr' ? 'border-[#a855f7] text-[#c084fc] bg-purple-500/10' : 'border-[#3f3f46] text-[#71717a] bg-transparent')}>→ Left to Right</button>
-              <button onClick={() => setGReadDir('rtl')} className={'px-3 py-1.5 rounded-lg cursor-pointer text-xs font-medium border ' + (gReadDir === 'rtl' ? 'border-[#a855f7] text-[#c084fc] bg-purple-500/10' : 'border-[#3f3f46] text-[#71717a] bg-transparent')}>← Right to Left</button>
-            </div></div>)}
-            {files.length > 1 && (<div><label className="block text-xs text-[#71717a] mb-1.5">Album Thumbnail</label><div className="flex items-center gap-3"><div className="w-12 h-[72px] rounded-lg bg-[#27272a] border border-dashed border-[#3f3f46] flex items-center justify-center shrink-0 overflow-hidden">{thumbPreview ? <img src={thumbPreview} className="w-full h-full object-cover" alt="" /> : <span className="text-[#52525b] text-lg">📷</span>}</div><button type="button" onClick={() => thumbRef.current?.click()} className="px-3 py-1.5 border border-[#3f3f46] rounded-lg bg-transparent text-[#c084fc] cursor-pointer text-xs">{thumbPreview ? 'Change' : 'Choose'}</button><input ref={thumbRef} type="file" className="hidden" accept=".jpg,.jpeg,.png,.webp" onChange={handleThumb} /></div></div>)}
-            <div><label className="block text-xs text-[#71717a] mb-1.5">Images <span className="text-[#52525b]">(max 10MB each, 50MB total)</span></label>
-              <div onClick={() => fileRef.current?.click()} onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop} className={'border-2 border-dashed rounded-xl p-6 md:p-10 text-center cursor-pointer transition-colors ' + (dragging ? 'border-[#a855f7] bg-purple-500/10' : 'border-[#3f3f46] hover:border-[#a855f7]')}>
-                <input ref={fileRef} type="file" className="hidden" accept=".jpg,.jpeg,.png,.webp" multiple onChange={handleFiles} />
-                <p className="text-sm font-medium text-[#d4d4d8]">{files.length ? files.length + ' image(s) selected' : dragging ? 'Drop images here!' : 'Click or drag & drop images'}</p>
-                {files.length > 0 && <div className="mt-2 max-h-[100px] overflow-y-auto text-left" onClick={e => e.stopPropagation()}>{files.map((f, i) => (<div key={i} className="flex items-center gap-2 py-1 border-b border-[#27272a] text-xs"><span className="text-[#52525b] w-5 text-center">{i+1}</span><span className="flex-1 truncate">{f.name}</span><span className="text-[#52525b]">{(f.size/1024).toFixed(0)}KB</span><button onClick={() => setFiles(p => p.filter((_,j) => j!==i))} className="text-[#71717a] hover:text-[#f87171] bg-transparent border-none cursor-pointer text-xs px-1">✕</button></div>))}</div>}
-              </div></div>
-            <button onClick={() => { setStep('choose'); setFiles([]) }} className="bg-transparent border-none text-[#71717a] cursor-pointer text-sm text-left">← Back</button>
-          </div>
-          <div className="p-3 border-t border-[#27272a] flex gap-2">
-            <button onClick={onClose} className="flex-1 py-2 border border-[#3f3f46] rounded-lg bg-transparent text-[#a1a1aa] cursor-pointer text-sm">Cancel</button>
-            <button onClick={submit} disabled={!canPublish || uploading} className={'flex-[2] py-2 bg-[#7c3aed] text-white rounded-lg text-sm font-medium border-none ' + (canPublish && !uploading ? 'cursor-pointer hover:bg-[#6d28d9]' : 'opacity-40 cursor-not-allowed')}>{uploading ? progress : 'Publish'}</button>
-          </div>
-        </>)}
-
-        {step === 'form' && uploadType === 'series' && (<>
+        {step === 'form' && (<>
           <div className="p-4 flex flex-col gap-3">
             {uploadError && <div className="bg-red-500/10 border border-red-500/30 text-red-400 text-xs rounded-xl p-2.5">{uploadError}</div>}
             {mode === 'new' && (<div>

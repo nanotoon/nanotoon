@@ -2,7 +2,6 @@
 import { LoadingSpinner } from '@/components/LoadingSpinner'
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { SeriesCard } from '@/components/SeriesCard'
-import { GalleryCard } from '@/components/GalleryCard'
 import { Avatar } from '@/components/Avatar'
 import { ShareModal } from '@/components/ShareModal'
 import { useToast } from '@/components/Toast'
@@ -19,7 +18,6 @@ export default function ProfilePage() {
   const anonDb = useMemo(() => createAnonClient(), [])
   const [showShare, setShowShare] = useState(false)
   const [mySeries, setMySeries] = useState<any[]>([])
-  const [myGallery, setMyGallery] = useState<any[]>([])
   const [followerCount, setFollowerCount] = useState(0)
   const [followingCount, setFollowingCount] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -32,13 +30,11 @@ export default function ProfilePage() {
     let c = false
     Promise.all([
       anonDb.from('series').select('*').eq('author_id', user.id).order('created_at', { ascending: false }),
-      anonDb.from('gallery').select('*').eq('author_id', user.id).order('created_at', { ascending: false }),
       anonDb.from('follows').select('*', { count: 'exact', head: true }).eq('following_id', user.id),
       anonDb.from('follows').select('*', { count: 'exact', head: true }).eq('follower_id', user.id),
-    ]).then(([s, g, fr, fg]: any) => {
+    ]).then(([s, fr, fg]: any) => {
       if (!c) {
         setMySeries(s.data ?? [])
-        setMyGallery(g.data ?? [])
         setFollowerCount(fr.count ?? 0)
         setFollowingCount(fg.count ?? 0)
         setLoading(false)
@@ -72,15 +68,6 @@ export default function ProfilePage() {
     if (error) { show('Failed to delete: ' + error.message); return }
     setMySeries(prev => prev.filter(s => s.id !== id))
     show('Series deleted')
-  }
-
-  async function delGallery(id: string) {
-    await ensureFreshSession()
-    if (!confirm('Delete this gallery item?')) return
-    const { error } = await (createWriteClient() as any).from('gallery').delete().eq('id', id)
-    if (error) { show('Failed to delete: ' + error.message); return }
-    setMyGallery(prev => prev.filter(g => g.id !== id))
-    show('Gallery item deleted')
   }
 
   const dn = profile?.display_name || 'User'; const h = profile?.handle || 'user'
@@ -132,24 +119,6 @@ export default function ProfilePage() {
               <div className="flex gap-1.5 mt-1.5">
                 <Link href={`/series/${s.slug}/edit`} className="flex-1 py-1 bg-[#27272a] border border-[#3f3f46] rounded-lg text-[0.7rem] text-[#c084fc] text-center hover:border-[#a855f7] no-underline">Edit</Link>
                 <button onClick={() => delSeries(s.id)} className="flex-1 py-1 bg-[#27272a] border border-[#3f3f46] rounded-lg text-[0.7rem] text-[#f87171] hover:border-[#ef4444] cursor-pointer">Delete</button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* ─── My Gallery ────────────────────────────────────── */}
-      <h3 className="font-semibold mb-3 text-sm">My Gallery</h3>
-      {loading ? null : myGallery.length === 0 ? (
-        <p className="text-[#71717a] text-sm">No gallery artworks yet. Upload some!</p>
-      ) : (
-        <div className="grid grid-cols-3 md:grid-cols-4 gap-3">
-          {myGallery.map((g, i) => (
-            <div key={g.id}>
-              <GalleryCard item={g} index={i} />
-              <div className="flex gap-1.5 mt-1.5">
-                <Link href={`/gallery/${g.id}/edit`} className="flex-1 py-1 bg-[#27272a] border border-[#3f3f46] rounded-lg text-[0.7rem] text-[#c084fc] text-center hover:border-[#a855f7] no-underline">Edit</Link>
-                <button onClick={() => delGallery(g.id)} className="flex-1 py-1 bg-[#27272a] border border-[#3f3f46] rounded-lg text-[0.7rem] text-[#f87171] hover:border-[#ef4444] cursor-pointer">Delete</button>
               </div>
             </div>
           ))}

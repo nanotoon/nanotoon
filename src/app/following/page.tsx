@@ -2,7 +2,6 @@
 import { LoadingSpinner } from '@/components/LoadingSpinner'
 import { useState, useEffect, useMemo } from 'react'
 import { SeriesCard } from '@/components/SeriesCard'
-import { GalleryCard } from '@/components/GalleryCard'
 import { Avatar } from '@/components/Avatar'
 import { useToast } from '@/components/Toast'
 import { useAuth } from '@/contexts/AuthContext'
@@ -15,7 +14,6 @@ export default function FollowingPage() {
   const anonDb = useMemo(() => createAnonClient(), [])
   const [following, setFollowing] = useState<any[]>([])
   const [feedSeries, setFeedSeries] = useState<any[]>([])
-  const [feedGallery, setFeedGallery] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -44,23 +42,15 @@ export default function FollowingPage() {
         const followedIds = follows.map((f: any) => f.following_id).filter(Boolean)
 
         if (followedIds.length > 0) {
-          // Fetch series & gallery from followed users
-          const [seriesRes, galleryRes] = await Promise.all([
-            anonDb.from('series')
-              .select('*, profiles!series_author_id_fkey(display_name, handle, avatar_url)')
-              .neq('is_removed', true).in('author_id', followedIds)
-              .order('updated_at', { ascending: false })
-              .limit(20),
-            anonDb.from('gallery')
-              .select('*, profiles!gallery_author_id_fkey(display_name, handle, avatar_url)')
-              .neq('is_removed', true).in('author_id', followedIds)
-              .order('created_at', { ascending: false })
-              .limit(20),
-          ]) as any[]
+          // Fetch series from followed users
+          const seriesRes = await anonDb.from('series')
+            .select('*, profiles!series_author_id_fkey(display_name, handle, avatar_url)')
+            .neq('is_removed', true).in('author_id', followedIds)
+            .order('updated_at', { ascending: false })
+            .limit(20) as any
 
           if (!cancelled) {
             setFeedSeries(seriesRes.data ?? [])
-            setFeedGallery(galleryRes.data ?? [])
           }
         }
 
@@ -85,7 +75,6 @@ export default function FollowingPage() {
     await (wc as any).from('follows').delete().eq('follower_id', uid).eq('following_id', targetId)
     setFollowing(prev => prev.filter(f => f.following_id !== targetId))
     setFeedSeries(prev => prev.filter(s => s.author_id !== targetId))
-    setFeedGallery(prev => prev.filter(g => g.author_id !== targetId))
     show(`Unfollowed ${name}`)
   }
 
@@ -144,16 +133,6 @@ export default function FollowingPage() {
                 likes={s.total_likes}
                 favorites={s.total_favorites}
               />
-            ))}
-          </div>
-        </>)}
-
-        {/* ─── Gallery from followed users ────────────────── */}
-        {feedGallery.length > 0 && (<>
-          <h3 className="font-semibold mb-3 text-sm">Gallery from Followed</h3>
-          <div className="grid grid-cols-3 md:grid-cols-4 gap-3">
-            {feedGallery.map((g, i) => (
-              <GalleryCard key={g.id} item={g} index={i} />
             ))}
           </div>
         </>)}

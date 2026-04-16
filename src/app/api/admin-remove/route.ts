@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Missing fields" }, { status: 400 });
   }
 
-  const table = contentType === "Series" ? "series" : "gallery";
+  const table = "series";
 
   // Use admin JWT with admin RLS policies
   const supabase = createClient(
@@ -67,12 +67,10 @@ export async function POST(request: NextRequest) {
 
   // === PERMANENT DELETE ===
   if (action === "permanent-delete") {
-    if (table === "series") {
-      await supabase.from("chapters").delete().eq("series_id", contentId);
-      await supabase.from("likes").delete().eq("series_id", contentId);
-      await supabase.from("favorites").delete().eq("series_id", contentId);
-      await supabase.from("comments").delete().eq("series_id", contentId);
-    }
+    await supabase.from("chapters").delete().eq("series_id", contentId);
+    await supabase.from("likes").delete().eq("series_id", contentId);
+    await supabase.from("favorites").delete().eq("series_id", contentId);
+    await supabase.from("comments").delete().eq("series_id", contentId);
     const { error } = await supabase.from(table).delete().eq("id", contentId);
     if (error) return NextResponse.json({ error: "Delete failed: " + error.message }, { status: 500 });
     return NextResponse.json({ ok: true });
