@@ -282,6 +282,22 @@ export default function EditSeriesPage() {
     }).select().single()
     if (error) { show('Failed: ' + error.message); setAddingChapter(false); return }
     await (createWriteClient() as any).from('series').update({ updated_at: new Date().toISOString() }).eq('id', series.id)
+
+    // FIX: notify all followers of the author that a new chapter is out
+    try {
+      const authorId = getAuthUserId()
+      if (authorId && series.title) {
+        const { data: followers } = await anonDb.from('follows').select('follower_id').eq('following_id', authorId) as { data: any[] | null }
+        if (followers && followers.length > 0) {
+          const rows = followers.map((f: any) => ({
+            user_id: f.follower_id, actor_id: authorId, type: 'new_chapter',
+            message: `"${series.title}" is out`, series_id: series.id,
+          }))
+          await (createWriteClient() as any).from('notifications').insert(rows)
+        }
+      }
+    } catch { /* silently ignore — don't block publish on notification failure */ }
+
     setChapters(prev => [...prev, ch].sort((a, b) => a.chapter_number - b.chapter_number))
     setNewChTitle(''); setNewChNumber(newChNumber + 1); setNewChFiles([]); setNewChRating('General')
     setShowAddChapter(false); setAddingChapter(false)

@@ -43,6 +43,18 @@ export default function RegisterPage() {
       return
     }
 
+    // FIX: Insert in-app welcome notification for new email/password users
+    // (OAuth users get this from the callback route; email/password users were missing it).
+    // Fire-and-forget — don't block signup on it.
+    if (data.user) {
+      supabase.from('notifications').insert({
+        user_id: data.user.id,
+        actor_id: null,
+        type: 'welcome',
+        message: `Welcome to NANOTOON! 🎉 This is a platform built specifically for AI comic, manga, and webtoon creators. Get your series live by uploading your first chapter, or start supporting your favorite creators today!`,
+      } as any).then(() => {}, () => {/* silently ignore */})
+    }
+
     // Send welcome email (fire and forget — won't block the user)
     try {
       fetch('/api/send-welcome', {

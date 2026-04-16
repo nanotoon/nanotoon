@@ -211,6 +211,23 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
     })
     if (chErr) throw new Error(chErr.message || 'Chapter save failed')
     await (createWriteClient() as any).from('series').update({ updated_at: new Date().toISOString() }).eq('id', seriesId)
+
+    // FIX: notify all followers of the author that a new chapter is out
+    try {
+      const authorId = getAuthUserId()
+      const seriesTitleForNotif = mode === 'new' ? seriesTitle : (mySeries.find(s => s.id === seriesId)?.title || 'a series')
+      if (authorId) {
+        const { data: followers } = await anonDb.from('follows').select('follower_id').eq('following_id', authorId) as { data: any[] | null }
+        if (followers && followers.length > 0) {
+          const rows = followers.map((f: any) => ({
+            user_id: f.follower_id, actor_id: authorId, type: 'new_chapter',
+            message: `"${seriesTitleForNotif}" is out`, series_id: seriesId,
+          }))
+          await (createWriteClient() as any).from('notifications').insert(rows)
+        }
+      }
+    } catch { /* silently ignore — don't block publish on notification failure */ }
+
     onToast('Chapter published! 🎉'); onClose(); setTimeout(() => window.location.reload(), 600)
   }
 

@@ -272,6 +272,13 @@ export default function ReaderPage() {
       setLiked(true)
       const { count } = await anonDb.from('likes').select('*', { count: 'exact', head: true }).eq('series_id', series.id) as any
       setSeries((s: any) => ({ ...s, total_likes: count ?? (s.total_likes ?? 0) + 1 }))
+      // FIX: notify series author on like (skip self-likes)
+      if (series.author_id && series.author_id !== uid) {
+        (wc as any).from('notifications').insert({
+          user_id: series.author_id, actor_id: uid, type: 'like',
+          message: `liked "${series.title}"`, series_id: series.id,
+        }).then(() => {}, () => {})
+      }
       show('Liked!')
     }
   }
@@ -307,7 +314,13 @@ export default function ReaderPage() {
     } else {
       const { error } = await (wc as any).from('follows').insert({ follower_id: uid, following_id: series.author_id })
       if (error) { show('Error: ' + error.message); return }
-      setIsFollowing(true); show('Following!')
+      setIsFollowing(true)
+      // FIX: notify the user who was just followed
+      ;(wc as any).from('notifications').insert({
+        user_id: series.author_id, actor_id: uid, type: 'follow',
+        message: 'started following you',
+      }).then(() => {}, () => {})
+      show('Following!')
     }
   }
 
@@ -330,6 +343,23 @@ export default function ReaderPage() {
       if (isSeries) { setSeriesComments(prev => [data, ...prev]); setSeriesCommentText('') }
       else { setComments(prev => [data, ...prev]); setCommentText('') }
       if (parentId) { setReplyingTo(null); setReplyText('') }
+      // FIX: notify series author on new comment (skip self-comments)
+      if (!parentId && series.author_id && series.author_id !== uid) {
+        (wc as any).from('notifications').insert({
+          user_id: series.author_id, actor_id: uid, type: 'comment',
+          message: `commented on "${series.title}"`, series_id: series.id, comment_id: data.id,
+        }).then(() => {}, () => {})
+      }
+      // FIX: if this is a reply, also notify the parent comment's author (skip self-replies)
+      if (parentId) {
+        const parent = (isSeries ? seriesComments : comments).find(x => x.id === parentId)
+        if (parent && parent.user_id && parent.user_id !== uid) {
+          (wc as any).from('notifications').insert({
+            user_id: parent.user_id, actor_id: uid, type: 'reply',
+            message: `replied to your comment on "${series.title}"`, series_id: series.id, comment_id: data.id,
+          }).then(() => {}, () => {})
+        }
+      }
       show('Comment posted!')
     }
   }
@@ -365,6 +395,14 @@ export default function ReaderPage() {
       await (createWriteClient() as any).from('comment_likes').delete().eq('user_id', uid).eq('comment_id', commentId)
     } else {
       await (createWriteClient() as any).from('comment_likes').insert({ user_id: uid, comment_id: commentId })
+      // FIX: notify the comment's author on like (skip self-likes)
+      const c = comments.find(x => x.id === commentId) || seriesComments.find(x => x.id === commentId)
+      if (c && c.user_id && c.user_id !== uid && series) {
+        (createWriteClient() as any).from('notifications').insert({
+          user_id: c.user_id, actor_id: uid, type: 'comment_like',
+          message: `liked your comment on "${series.title}"`, series_id: series.id, comment_id: commentId,
+        }).then(() => {}, () => {})
+      }
     }
   }
 

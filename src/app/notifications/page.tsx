@@ -83,6 +83,13 @@ export default function NotificationsPage() {
       return
     }
 
+    // FIX: notifications with a series_id → look up slug and navigate to the series page
+    if (n.series_id) {
+      const { data: s } = await anonDb.from('series').select('slug').eq('id', n.series_id).maybeSingle() as { data: any }
+      if (s?.slug) { router.push(`/series/${s.slug}`); return }
+    }
+
+    // Follow notifications with an actor → go to their profile-ish fallback: just mark read
     // Default → just mark read and show detail
     setSelectedNotif(n)
   }
