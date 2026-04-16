@@ -50,6 +50,20 @@ export async function GET(request: Request) {
             type: "welcome",
             message: `Welcome to NANOTOON! 🎉 This is a platform built specifically for AI comic, manga, and webtoon creators. Get your series live by uploading your first chapter, or start supporting your favorite creators today!`,
           });
+
+          // FIX: Send welcome EMAIL to new OAuth users. Previously this only fired
+          // from the email/password register form, so Google/Discord sign-ups never
+          // got the welcome email. Fire-and-forget so callback redirect isn't blocked.
+          if (user.email) {
+            const forwardedHostForEmail = request.headers.get("x-forwarded-host");
+            const proto = request.headers.get("x-forwarded-proto") || (process.env.NODE_ENV === "development" ? "http" : "https");
+            const baseUrl = forwardedHostForEmail ? `${proto}://${forwardedHostForEmail}` : origin;
+            fetch(`${baseUrl}/api/send-welcome`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ email: user.email, displayName }),
+            }).catch(() => { /* silently ignore — don't block signup */ });
+          }
         }
       }
 
