@@ -8,6 +8,7 @@ import { useToast } from '@/components/Toast'
 import { useAuth } from '@/contexts/AuthContext'
 import { createAnonClient } from '@/lib/supabase/anon'
 import { ensureFreshSession, createWriteClient } from '@/lib/supabase/write'
+import { latestRating } from '@/lib/seriesRating'
 import Link from 'next/link'
 
 function fmtNum(n: number) { if (n >= 1e6) return (n/1e6).toFixed(1).replace(/\.0$/,'')+'M'; if (n >= 1e3) return (n/1e3).toFixed(1).replace(/\.0$/,'')+'K'; return n.toString() }
@@ -18,6 +19,7 @@ export default function ProfilePage() {
   const anonDb = useMemo(() => createAnonClient(), [])
   const [showShare, setShowShare] = useState(false)
   const [mySeries, setMySeries] = useState<any[]>([])
+  const [formatFilter, setFormatFilter] = useState('All')
   const [followerCount, setFollowerCount] = useState(0)
   const [followingCount, setFollowingCount] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -29,7 +31,7 @@ export default function ProfilePage() {
     const timeout = setTimeout(() => { if (!c) setLoading(false) }, 4000)
     let c = false
     Promise.all([
-      anonDb.from('series').select('*').eq('author_id', user.id).neq('is_removed', true).order('created_at', { ascending: false }),
+      anonDb.from('series').select('*, chapters(rating, chapter_number)').eq('author_id', user.id).neq('is_removed', true).order('created_at', { ascending: false }),
       anonDb.from('follows').select('*', { count: 'exact', head: true }).eq('following_id', user.id),
       anonDb.from('follows').select('*', { count: 'exact', head: true }).eq('follower_id', user.id),
     ]).then(([s, fr, fg]: any) => {
@@ -108,14 +110,20 @@ export default function ProfilePage() {
       </div>
 
       {/* ─── My Series ─────────────────────────────────────── */}
-      <h3 className="font-semibold mb-3 text-sm">My Series</h3>
+      <div className="flex items-center gap-1.5 mb-3 flex-wrap">
+        <h3 className="font-semibold text-sm mr-1">My Series</h3>
+        {mySeries.length > 0 && ['All', 'Series', 'One Shot'].map(f => (
+          <button key={f} onClick={() => setFormatFilter(f)}
+            className={`px-3 py-1 rounded-full text-[0.73rem] cursor-pointer border transition-all ${formatFilter === f ? 'bg-[#7c3aed] border-[#7c3aed] text-white' : 'bg-transparent border-[#3f3f46] text-[#71717a] hover:border-[#a855f7] hover:text-[#c084fc]'}`}>{f}</button>
+        ))}
+      </div>
       {loading ? <LoadingSpinner /> : mySeries.length === 0 ? (
         <p className="text-[#71717a] text-sm mb-8">No series yet. Upload your first one!</p>
       ) : (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-          {mySeries.map((s, i) => (
+          {mySeries.filter(s => formatFilter === 'All' || s.format === formatFilter).map((s, i) => (
             <div key={s.id}>
-              <SeriesCard title={s.title} slug={s.slug} author={dn} thumbnailUrl={s.thumbnail_url} latestChapter={0} rating="General" format={s.format} index={i} views={s.total_views} likes={s.total_likes} favorites={s.total_favorites} />
+              <SeriesCard title={s.title} slug={s.slug} author={dn} thumbnailUrl={s.thumbnail_url} latestChapter={0} rating={latestRating(s.chapters)} format={s.format} index={i} views={s.total_views} likes={s.total_likes} favorites={s.total_favorites} />
               <div className="flex gap-1.5 mt-1.5">
                 <Link href={`/series/${s.slug}/edit`} className="flex-1 py-1 bg-[#27272a] border border-[#3f3f46] rounded-lg text-[0.7rem] text-[#c084fc] text-center hover:border-[#a855f7] no-underline">Edit</Link>
                 <button onClick={() => delSeries(s.id)} className="flex-1 py-1 bg-[#27272a] border border-[#3f3f46] rounded-lg text-[0.7rem] text-[#f87171] hover:border-[#ef4444] cursor-pointer">Delete</button>

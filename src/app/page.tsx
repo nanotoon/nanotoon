@@ -5,6 +5,7 @@ import { SeriesCard } from '@/components/SeriesCard'
 import { LoadingSpinner } from '@/components/LoadingSpinner'
 import { useToast } from '@/components/Toast'
 import { createAnonClient } from '@/lib/supabase/anon'
+import { latestRating } from '@/lib/seriesRating'
 
 export default function HomePage() {
   const { show } = useToast()
@@ -29,9 +30,9 @@ export default function HomePage() {
     async function load() {
       try {
         setLoading(true)
-        let mvQ = supabase.from('series').select('*, profiles!series_author_id_fkey(display_name, handle, avatar_url)').neq('is_removed', true).order('total_views', { ascending: false }).limit(9)
+        let mvQ = supabase.from('series').select('*, profiles!series_author_id_fkey(display_name, handle, avatar_url), chapters(rating, chapter_number)').neq('is_removed', true).order('total_views', { ascending: false }).limit(9)
         if (formatFilter !== 'All') mvQ = mvQ.eq('format', formatFilter)
-        let latQ = supabase.from('series').select('*, profiles!series_author_id_fkey(display_name, handle, avatar_url)').neq('is_removed', true).order('updated_at', { ascending: false }).limit(latestLimit)
+        let latQ = supabase.from('series').select('*, profiles!series_author_id_fkey(display_name, handle, avatar_url), chapters(rating, chapter_number)').neq('is_removed', true).order('updated_at', { ascending: false }).limit(latestLimit)
         if (formatFilter !== 'All') latQ = latQ.eq('format', formatFilter)
         const [mv, lt] = await Promise.all([mvQ, latQ])
         if (mv.error) console.error('Most viewed query error:', mv.error.message)
@@ -66,13 +67,13 @@ export default function HomePage() {
           </div>
         </div>
         {loading ? <LoadingSpinner /> : mostViewed.length === 0 ? <p className="text-center py-12 text-[#52525b] text-sm">No series uploaded yet. Be the first!</p> : (
-          <div className="grid gap-2.5 md:gap-4 grid-cols-3 md:grid-cols-9">{mostViewed.slice(0, isMobile ? 6 : 9).map((s, i) => (<SeriesCard key={s.id} title={s.title} slug={s.slug} author={s.profiles?.display_name || 'Unknown'} thumbnailUrl={s.thumbnail_url} latestChapter={0} rating="General" format={s.format} index={i} views={s.total_views} likes={s.total_likes} favorites={s.total_favorites} />))}</div>
+          <div className="grid gap-2.5 md:gap-4 grid-cols-3 md:grid-cols-9">{mostViewed.slice(0, isMobile ? 6 : 9).map((s, i) => (<SeriesCard key={s.id} title={s.title} slug={s.slug} author={s.profiles?.display_name || 'Unknown'} thumbnailUrl={s.thumbnail_url} latestChapter={0} rating={latestRating(s.chapters)} format={s.format} index={i} views={s.total_views} likes={s.total_likes} favorites={s.total_favorites} />))}</div>
         )}
       </section>
       <section>
         <Link href="/browse?mode=latest" className="text-base font-semibold text-[#c084fc] no-underline flex items-center gap-1 mb-3 hover:text-[#a855f7]">Latest Updates <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></Link>
         {!loading && latest.length === 0 ? <p className="text-center py-12 text-[#52525b] text-sm">No series yet.</p> : (
-          <div className="grid gap-2.5 md:gap-4 grid-cols-3 md:grid-cols-9">{latest.map((s, i) => (<SeriesCard key={s.id} title={s.title} slug={s.slug} author={s.profiles?.display_name || 'Unknown'} thumbnailUrl={s.thumbnail_url} latestChapter={0} rating="General" format={s.format} index={i + 9} views={s.total_views} likes={s.total_likes} favorites={s.total_favorites} />))}</div>
+          <div className="grid gap-2.5 md:gap-4 grid-cols-3 md:grid-cols-9">{latest.map((s, i) => (<SeriesCard key={s.id} title={s.title} slug={s.slug} author={s.profiles?.display_name || 'Unknown'} thumbnailUrl={s.thumbnail_url} latestChapter={0} rating={latestRating(s.chapters)} format={s.format} index={i + 9} views={s.total_views} likes={s.total_likes} favorites={s.total_favorites} />))}</div>
         )}
         {latest.length > 0 && <div className="flex justify-center mt-7"><button onClick={() => { setLatestLimit(prev => prev + 18); show('Loaded more!') }} className="px-7 py-2.5 border border-[#3f3f46] rounded-xl bg-transparent text-[#a1a1aa] cursor-pointer text-sm hover:border-[#a855f7] hover:text-[#c084fc]">View More</button></div>}
       </section>

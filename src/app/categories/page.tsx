@@ -5,11 +5,13 @@ import { LoadingSpinner } from '@/components/LoadingSpinner'
 import { categories } from '@/data/mock'
 import { useToast } from '@/components/Toast'
 import { createAnonClient } from '@/lib/supabase/anon'
+import { latestRating } from '@/lib/seriesRating'
 
 export default function CategoriesPage() {
   const { show } = useToast()
   const supabase = useMemo(() => createAnonClient(), [])
   const [selectedCat, setSelectedCat] = useState<string | null>(null)
+  const [formatFilter, setFormatFilter] = useState('All')
   const [series, setSeries] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [limit, setLimit] = useState(45)
@@ -28,7 +30,7 @@ export default function CategoriesPage() {
     async function load() {
       try {
         setLoading(true)
-        let q = supabase.from('series').select('*, profiles!series_author_id_fkey(display_name, handle, avatar_url)').neq('is_removed', true)
+        let q = supabase.from('series').select('*, profiles!series_author_id_fkey(display_name, handle, avatar_url), chapters(rating, chapter_number)').neq('is_removed', true)
           .order('updated_at', { ascending: false }).limit(limit)
         if (selectedCat) q = q.contains('genres', [selectedCat])
         const { data } = await q
@@ -55,7 +57,8 @@ export default function CategoriesPage() {
     }
   }
 
-  const mvSeries = [...series].sort((a, b) => (b.total_views ?? 0) - (a.total_views ?? 0)).slice(0, 9)
+  const filteredSeries = formatFilter === 'All' ? series : series.filter(s => s.format === formatFilter)
+  const mvSeries = [...filteredSeries].sort((a, b) => (b.total_views ?? 0) - (a.total_views ?? 0)).slice(0, 9)
 
   return (
     <div className="px-4 md:px-8 py-6">
@@ -67,6 +70,14 @@ export default function CategoriesPage() {
             <div className="text-2xl md:text-3xl mb-1">{cat.emoji}</div>
             <div className="font-semibold text-[0.8rem]">{cat.name}</div>
           </div>
+        ))}
+      </div>
+
+      <div className="flex items-center gap-1.5 mb-5 flex-wrap">
+        <span className="text-[0.75rem] text-[#71717a] shrink-0">Show:</span>
+        {['All', 'Series', 'One Shot'].map(f => (
+          <button key={f} onClick={() => setFormatFilter(f)}
+            className={`px-3 py-1 rounded-full text-[0.73rem] cursor-pointer border transition-all ${formatFilter === f ? 'bg-[#7c3aed] border-[#7c3aed] text-white' : 'bg-transparent border-[#3f3f46] text-[#71717a] hover:border-[#a855f7] hover:text-[#c084fc]'}`}>{f}</button>
         ))}
       </div>
 
@@ -82,18 +93,18 @@ export default function CategoriesPage() {
           <div className="grid gap-2.5 md:gap-4 grid-cols-3 md:grid-cols-9 mb-8">
             {mvSeries.map((s, i) => (
               <SeriesCard key={s.id} title={s.title} slug={s.slug} author={s.profiles?.display_name || 'Unknown'} thumbnailUrl={s.thumbnail_url}
-                latestChapter={0} rating="General" format={s.format} index={i} views={s.total_views} likes={s.total_likes} favorites={s.total_favorites} />
+                latestChapter={0} rating={latestRating(s.chapters)} format={s.format} index={i} views={s.total_views} likes={s.total_likes} favorites={s.total_favorites} />
             ))}
           </div>
         )}
 
         <h2 className="text-base font-semibold text-[#c084fc] mb-3">Latest Updates</h2>
-        {series.length > 0 ? (
+        {filteredSeries.length > 0 ? (
           <>
             <div className="grid gap-2.5 md:gap-4 grid-cols-3 md:grid-cols-9">
-              {series.map((s, i) => (
+              {filteredSeries.map((s, i) => (
                 <SeriesCard key={s.id+'-l'} title={s.title} slug={s.slug} author={s.profiles?.display_name || 'Unknown'} thumbnailUrl={s.thumbnail_url}
-                  latestChapter={0} rating="General" format={s.format} index={i + 9} views={s.total_views} likes={s.total_likes} favorites={s.total_favorites} />
+                  latestChapter={0} rating={latestRating(s.chapters)} format={s.format} index={i + 9} views={s.total_views} likes={s.total_likes} favorites={s.total_favorites} />
               ))}
             </div>
             <div className="flex justify-center mt-7">

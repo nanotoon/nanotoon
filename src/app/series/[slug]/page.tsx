@@ -11,6 +11,7 @@ import { useToast } from '@/components/Toast'
 import { useAuth } from '@/contexts/AuthContext'
 import { createAnonClient } from '@/lib/supabase/anon'
 import { createWriteClient, getAuthUserId, ensureFreshSession } from '@/lib/supabase/write'
+import { MATURE_FAQ_TEXT } from '@/components/SeriesCard'
 
 function fmtNum(n: number | null | undefined): string {
   if (!n) return '0'; if (n >= 1e6) return (n/1e6).toFixed(1).replace(/\.0$/,'')+'M'; if (n >= 1e3) return (n/1e3).toFixed(1).replace(/\.0$/,'')+'K'; return n.toString()
@@ -157,6 +158,7 @@ export default function ReaderPage() {
   const [replyText, setReplyText] = useState('')
   const [likedComments, setLikedComments] = useState<Set<string>>(new Set())
   const [headerHidden, setHeaderHidden] = useState(false)
+  const [showMatureInfo, setShowMatureInfo] = useState(false)
 
   const touchStart = useRef<{ x: number; y: number } | null>(null)
 
@@ -536,9 +538,14 @@ export default function ReaderPage() {
                 Share
               </button>
               {currentChData?.rating === 'Mature' && (
-                <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-400 text-sm font-medium">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="shrink-0"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                  Warning: This content may contain mature themes.
+                <span className="relative group/mature">
+                  <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-400 text-sm font-medium cursor-help">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="shrink-0"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                    Warning: This content may contain mature themes.
+                  </span>
+                  <span className="hidden md:group-hover/mature:block absolute left-0 top-full mt-1.5 w-[380px] bg-[#27272a] border border-[#3f3f46] rounded-xl p-3.5 text-[0.7rem] text-[#a1a1aa] leading-relaxed whitespace-pre-line shadow-2xl z-[200]">
+                    {MATURE_FAQ_TEXT}
+                  </span>
                 </span>
               )}
             </div>
@@ -664,9 +671,24 @@ export default function ReaderPage() {
       {/* ─── Mobile-only mature warning bar (desktop has it inline next to Share) ─── */}
       {currentChData?.rating === 'Mature' && (
         <div className="md:hidden max-w-[800px] mx-auto px-3 mt-1.5">
-          <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-400 text-[0.68rem] font-medium">
+          <button type="button" onClick={() => setShowMatureInfo(true)}
+            className="w-full flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-400 text-[0.68rem] font-medium cursor-pointer">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="shrink-0"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-            Warning: This content may contain mature themes.
+            <span className="flex-1 text-left">Warning: This content may contain mature themes.</span>
+            <span className="text-[0.6rem] opacity-70">Tap for info</span>
+          </button>
+        </div>
+      )}
+
+      {/* ─── Mature info modal (shared trigger for both mobile bar tap and small-screen fallback) ─── */}
+      {showMatureInfo && (
+        <div className="fixed inset-0 bg-black/90 z-[400] flex items-center justify-center p-4" onClick={() => setShowMatureInfo(false)}>
+          <div className="bg-[#18181b] rounded-2xl max-w-[440px] w-full border border-[#27272a] p-5 max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-3">
+              <h3 className="font-semibold text-sm text-amber-400">Mature Content Guidelines</h3>
+              <button onClick={() => setShowMatureInfo(false)} className="bg-[#27272a] border-none w-6 h-6 rounded-md cursor-pointer text-[#a1a1aa]">&times;</button>
+            </div>
+            <p className="text-[#a1a1aa] text-xs leading-relaxed whitespace-pre-line">{MATURE_FAQ_TEXT}</p>
           </div>
         </div>
       )}

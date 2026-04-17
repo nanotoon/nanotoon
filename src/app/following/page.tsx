@@ -8,6 +8,7 @@ import { useToast } from '@/components/Toast'
 import { useAuth } from '@/contexts/AuthContext'
 import { createAnonClient } from '@/lib/supabase/anon'
 import { createWriteClient, ensureFreshSession, getAuthUserId } from '@/lib/supabase/write'
+import { latestRating } from '@/lib/seriesRating'
 
 export default function FollowingPage() {
   const { show } = useToast()
@@ -15,6 +16,7 @@ export default function FollowingPage() {
   const anonDb = useMemo(() => createAnonClient(), [])
   const [following, setFollowing] = useState<any[]>([])
   const [feedSeries, setFeedSeries] = useState<any[]>([])
+  const [formatFilter, setFormatFilter] = useState('All')
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -45,7 +47,7 @@ export default function FollowingPage() {
         if (followedIds.length > 0) {
           // Fetch series from followed users
           const seriesRes = await anonDb.from('series')
-            .select('*, profiles!series_author_id_fkey(display_name, handle, avatar_url)')
+            .select('*, profiles!series_author_id_fkey(display_name, handle, avatar_url), chapters(rating, chapter_number)')
             .neq('is_removed', true).in('author_id', followedIds)
             .order('updated_at', { ascending: false })
             .limit(20) as any
@@ -119,9 +121,15 @@ export default function FollowingPage() {
 
         {/* ─── Series from followed users ─────────────────── */}
         {feedSeries.length > 0 && (<>
-          <h3 className="font-semibold mb-3 text-sm">Series from Followed</h3>
+          <div className="flex items-center gap-1.5 mb-3 flex-wrap">
+            <h3 className="font-semibold text-sm mr-1">Series from Followed</h3>
+            {['All', 'Series', 'One Shot'].map(f => (
+              <button key={f} onClick={() => setFormatFilter(f)}
+                className={`px-3 py-1 rounded-full text-[0.73rem] cursor-pointer border transition-all ${formatFilter === f ? 'bg-[#7c3aed] border-[#7c3aed] text-white' : 'bg-transparent border-[#3f3f46] text-[#71717a] hover:border-[#a855f7] hover:text-[#c084fc]'}`}>{f}</button>
+            ))}
+          </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-            {feedSeries.map((s, i) => (
+            {feedSeries.filter(s => formatFilter === 'All' || s.format === formatFilter).map((s, i) => (
               <SeriesCard
                 key={s.id}
                 title={s.title}
@@ -129,7 +137,7 @@ export default function FollowingPage() {
                 author={s.profiles?.display_name || 'Unknown'}
                 thumbnailUrl={s.thumbnail_url}
                 latestChapter={0}
-                rating="General"
+                rating={latestRating(s.chapters)}
                 format={s.format}
                 index={i}
                 views={s.total_views}

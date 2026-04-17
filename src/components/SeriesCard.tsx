@@ -1,6 +1,9 @@
 import Link from 'next/link'
 import { GRADIENTS } from '@/data/mock'
 
+// Shared across the app — keep identical to the float-menu tooltip and FAQ.
+export const MATURE_FAQ_TEXT = "Violence & Dark Themes: We support high-stakes storytelling. Intense graphic violence and realistic blood are permitted in Mature-tagged chapters. However, content that exists solely to depict sadistic torture without narrative purpose, or content that mimics real-world 'snuff,' is prohibited to comply with safety regulations.\n\nNudity & Mature Content — Non-sexual nudity is allowed, provided that genitalia are fully obscured or censored. Pornographic content is strictly prohibited.\n\nFor more information about this, explore the FAQ page."
+
 function formatNum(n: number | null | undefined): string {
   if (!n) return '0'
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1).replace(/\.0$/, '') + 'M'
@@ -27,7 +30,15 @@ export function SeriesCard({ title, slug, author, thumbnailUrl, latestChapter, r
             {initials}
           </div>
         )}
-        {rating === 'Mature' && <div className="absolute top-1.5 left-1.5 bg-amber-600 text-white text-[0.6rem] px-1.5 py-0.5 rounded font-bold">MATURE</div>}
+        {rating === 'Mature' && (
+          <span className="absolute top-1.5 left-1.5 group/mature z-10">
+            <span className="block bg-amber-600 text-white text-[0.6rem] px-1.5 py-0.5 rounded font-bold">MATURE</span>
+            {/* Desktop-only hover tooltip with FAQ copy. Hidden on mobile to avoid fighting with the card tap-to-navigate. */}
+            <span className="hidden md:group-hover/mature:block absolute left-0 top-full mt-1 w-[280px] bg-[#27272a] border border-[#3f3f46] rounded-xl p-3 text-[0.68rem] text-[#a1a1aa] leading-relaxed whitespace-pre-line shadow-2xl z-[100] normal-case font-normal">
+              {MATURE_FAQ_TEXT}
+            </span>
+          </span>
+        )}
         {format === 'One Shot' && <div className="absolute bottom-1.5 left-1.5 bg-black/70 text-[0.59rem] px-1.5 py-0.5 rounded text-[#a1a1aa]">ONE SHOT</div>}
         {latestChapter > 0 && <div className="absolute top-1.5 right-1.5 bg-black/75 text-[0.6rem] px-1.5 py-0.5 rounded text-[#e4e4e7]">Ch. {latestChapter}</div>}
       </div>

@@ -89,10 +89,47 @@ export default function EditSeriesPage() {
     r.readAsDataURL(f)
   }
 
+  // ─── Auto-derive & sync series format based on chapter/page counts ────────
+  // Rules (per user request):
+  //   - 1 chapter with only 1 page → locked to "One Shot"
+  //   - 1 chapter with multi-page → user-chosen format is kept as-is
+  //   - 2+ chapters → always "Series"
+  // When the user's chosen format doesn't match the required one, we overwrite in DB.
+  function deriveAutoFormat(currentFormat: string, chapList: any[]): string {
+    if (chapList.length >= 2) return 'Series'
+    if (chapList.length === 1) {
+      const onlyCh = chapList[0]
+      const pageCount = onlyCh?.page_urls?.length ?? 0
+      if (pageCount <= 1) return 'One Shot'
+    }
+    return currentFormat  // respect user's choice (multi-page single chapter, or zero chapters)
+  }
+
+  async function syncSeriesFormat(chapList: any[]) {
+    if (!series) return
+    const desired = deriveAutoFormat(series.format, chapList)
+    if (desired !== series.format) {
+      const wc = createWriteClient()
+      if (wc) {
+        await (wc as any).from('series').update({ format: desired }).eq('id', series.id)
+        setSeries((s: any) => ({ ...s, format: desired }))
+        setFormat(desired)
+      }
+    }
+  }
+
+  // Format toggle is locked when 1 chapter + 1 page (forced One Shot)
+  const formatLocked = chapters.length === 1 && (chapters[0]?.page_urls?.length ?? 0) <= 1
+
   // ─── Save Series Info ───────────────────────────────────────
   async function save() {
     await ensureFreshSession()
     if (!series || !user) return
+    // Enforce format lock even at save time in case user somehow bypassed UI
+    if (formatLocked && format !== 'One Shot') {
+      show('Single-page single-chapter works are locked to One Shot')
+      return
+    }
     setSaving(true)
     let thumbnailUrl = series.thumbnail_url
     if (newThumbFile) {
@@ -166,8 +203,11 @@ export default function EditSeriesPage() {
     if (!confirm('Delete this chapter and all its pages?')) return
     const { error } = await (createWriteClient() as any).from('chapters').delete().eq('id', id)
     if (error) { show('Failed: ' + error.message); return }
-    setChapters(prev => prev.filter(c => c.id !== id))
+    const newChapters = chapters.filter(c => c.id !== id)
+    setChapters(newChapters)
     if (expandedChId === id) setExpandedChId(null)
+    // FIX: re-derive format after chapter count changes
+    await syncSeriesFormat(newChapters)
     show('Chapter deleted'); setTimeout(() => window.location.reload(), 600)
   }
 
@@ -196,12 +236,17 @@ export default function EditSeriesPage() {
   async function deletePage(chId: string, pageIndex: number) {
     const ch = chapters.find(c => c.id === chId)
     if (!ch || !ch.page_urls) return
-    if (ch.page_urls.length <= 2) { show('Chapters must have at least 2 pages'); return }
-    if (!confirm(`Delete page ${pageIndex + 1}?`)) return
+    // FIX: removed the 2-page minimum per user request (1-page chapters are allowed).
+    // If deleting the last page leaves zero, we still allow it — page_urls just becomes null.
+    if (ch.page_urls.length <= 1 && !confirm('This is the last page. Delete it anyway? (Chapter will have no pages.)')) return
+    if (ch.page_urls.length > 1 && !confirm(`Delete page ${pageIndex + 1}?`)) return
     const newUrls = ch.page_urls.filter((_: any, i: number) => i !== pageIndex)
     const { error } = await (createWriteClient() as any).from('chapters').update({ page_urls: newUrls.length > 0 ? newUrls : null }).eq('id', chId)
     if (error) { show('Failed: ' + error.message); return }
-    setChapters(prev => prev.map(c => c.id === chId ? { ...c, page_urls: newUrls.length > 0 ? newUrls : null } : c))
+    const updatedChapters = chapters.map(c => c.id === chId ? { ...c, page_urls: newUrls.length > 0 ? newUrls : null } : c)
+    setChapters(updatedChapters)
+    // FIX: re-derive format after page count changes on sole chapter
+    await syncSeriesFormat(updatedChapters)
     show('Page deleted'); setTimeout(() => window.location.reload(), 600)
   }
 
@@ -249,7 +294,11 @@ export default function EditSeriesPage() {
     const allUrls = [...existingUrls, ...newUrls]
     const { error } = await (createWriteClient() as any).from('chapters').update({ page_urls: allUrls }).eq('id', chId)
     if (error) { show('Failed to save: ' + error.message); return }
-    setChapters(prev => prev.map(c => c.id === chId ? { ...c, page_urls: allUrls } : c))
+    const updatedChapters = chapters.map(c => c.id === chId ? { ...c, page_urls: allUrls } : c)
+    setChapters(updatedChapters)
+    // FIX: re-derive format after page count changes. Adding pages to a locked
+    // one-shot-single-page chapter unlocks the toggle but keeps current format.
+    await syncSeriesFormat(updatedChapters)
     show(`${files.length} page(s) added!`); setTimeout(() => window.location.reload(), 600)
   }
 
@@ -257,7 +306,8 @@ export default function EditSeriesPage() {
   async function addChapter() {
     await ensureFreshSession()
     if (!series || !user || !newChTitle.trim()) { show('Chapter title is required'); return }
-    if (newChFiles.length < 2) { show('Please select at least 2 pages for the chapter'); return }
+    // FIX: removed 2-page minimum per user request; 1-page chapters are allowed.
+    if (newChFiles.length < 1) { show('Please select at least 1 page'); return }
     const totalSize = newChFiles.reduce((s, f) => s + f.size, 0)
     if (totalSize > 150 * 1024 * 1024) { show('Total pages exceed 150MB'); return }
     setAddingChapter(true)
@@ -281,7 +331,17 @@ export default function EditSeriesPage() {
       rating: newChRating, page_urls: pageUrls.length > 0 ? pageUrls : null,
     }).select().single()
     if (error) { show('Failed: ' + error.message); setAddingChapter(false); return }
-    await (createWriteClient() as any).from('series').update({ updated_at: new Date().toISOString() }).eq('id', series.id)
+
+    // FIX: adding a chapter means the series now has 2+ chapters, so auto-switch
+    // format to "Series" (was possibly "One Shot" from single-chapter state).
+    const updatedChapters = [...chapters, ch].sort((a, b) => a.chapter_number - b.chapter_number)
+    if (updatedChapters.length >= 2 && series.format !== 'Series') {
+      await (createWriteClient() as any).from('series').update({ format: 'Series', updated_at: new Date().toISOString() }).eq('id', series.id)
+      setSeries((s: any) => ({ ...s, format: 'Series' }))
+      setFormat('Series')
+    } else {
+      await (createWriteClient() as any).from('series').update({ updated_at: new Date().toISOString() }).eq('id', series.id)
+    }
 
     // FIX: notify all followers of the author that a new chapter is out
     try {
@@ -336,12 +396,28 @@ export default function EditSeriesPage() {
           <input value={title} onChange={e => setTitle(e.target.value)} className="w-full bg-[#27272a] border border-[#3f3f46] rounded-lg p-2 text-[#e4e4e7] outline-none text-sm focus:border-[#a855f7]" />
         </div>
         <div>
-          <label className="block text-xs text-[#71717a] mb-1.5">Format</label>
-          <div className="flex gap-1.5">
-            {['Series','One Shot'].map(f => (
-              <button key={f} onClick={() => setFormat(f)} className={`px-4 py-1.5 rounded-lg cursor-pointer text-xs font-medium border transition-all ${format === f ? 'border-[#a855f7] text-[#c084fc] bg-purple-500/10' : 'border-[#3f3f46] text-[#71717a] bg-transparent hover:border-[#a855f7]'}`}>{f}</button>
-            ))}
+          <div className="flex items-center gap-1 mb-1.5">
+            <label className="text-xs text-[#71717a]">Format</label>
+            <span className="relative group ml-1">
+              <span className="w-4 h-4 rounded-full border border-[#71717a] text-[0.6rem] text-[#71717a] inline-flex items-center justify-center cursor-help">?</span>
+              <span className="absolute left-6 bottom-0 w-[280px] bg-[#27272a] border border-[#3f3f46] rounded-xl p-3 text-[0.68rem] text-[#a1a1aa] leading-relaxed hidden group-hover:block z-[100] shadow-2xl">
+                A One Shot is a complete standalone story told in a single chapter — often a single page or a short collection of pages. If your series has only 1 chapter with 1 page, it's auto-locked to One Shot. Adding more chapters switches it to Series automatically.
+              </span>
+            </span>
           </div>
+          <div className="flex gap-1.5 flex-wrap">
+            {['Series','One Shot'].map(f => {
+              const isSeriesBtn = f === 'Series'
+              const disabled = formatLocked && isSeriesBtn
+              return (
+                <button key={f} type="button" disabled={disabled} onClick={() => { if (!disabled) setFormat(f) }}
+                  className={`px-4 py-1.5 rounded-lg text-xs font-medium border transition-all ${format === f ? 'border-[#a855f7] text-[#c084fc] bg-purple-500/10' : 'border-[#3f3f46] text-[#71717a] bg-transparent hover:border-[#a855f7]'} ${disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}>
+                  {f}
+                </button>
+              )
+            })}
+          </div>
+          {formatLocked && <p className="text-[0.65rem] text-[#71717a] mt-1">Auto-locked to One Shot (single chapter with 1 page). Add more pages or another chapter to unlock.</p>}
         </div>
         <div>
           <label className="block text-xs text-[#71717a] mb-1.5">Reading Mode</label>

@@ -5,6 +5,7 @@ import { SeriesCard } from '@/components/SeriesCard'
 import { LoadingSpinner } from '@/components/LoadingSpinner'
 import { useToast } from '@/components/Toast'
 import { createAnonClient } from '@/lib/supabase/anon'
+import { latestRating } from '@/lib/seriesRating'
 import Link from 'next/link'
 
 // --- 1. Everything stays exactly the same in this component ---
@@ -25,7 +26,7 @@ function BrowseContent() {
         setLoading(true)
         const col = mode === 'latest' ? 'updated_at' : 'total_views'
         const { data } = await supabase.from('series')
-          .select('*, profiles!series_author_id_fkey(display_name, handle, avatar_url)')
+          .select('*, profiles!series_author_id_fkey(display_name, handle, avatar_url), chapters(rating, chapter_number)')
           .neq('is_removed', true).order(col, { ascending: false }).limit(limit)
         clearTimeout(timeout); if (!cancelled) { setSeries(data ?? []); setLoading(false) }
       } catch { clearTimeout(timeout); if (!cancelled) setLoading(false) }
@@ -48,7 +49,7 @@ function BrowseContent() {
         <div className="grid gap-2.5 md:gap-4 grid-cols-3 md:grid-cols-9">
           {series.map((s, i) => (
             <SeriesCard key={s.id} title={s.title} slug={s.slug} author={s.profiles?.display_name || 'Unknown'} thumbnailUrl={s.thumbnail_url}
-              latestChapter={0} rating="General" format={s.format} index={i} views={s.total_views} likes={s.total_likes} favorites={s.total_favorites} />
+              latestChapter={0} rating={latestRating(s.chapters)} format={s.format} index={i} views={s.total_views} likes={s.total_likes} favorites={s.total_favorites} />
           ))}
         </div>
       )}

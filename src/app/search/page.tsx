@@ -6,6 +6,7 @@ import { SeriesCard } from '@/components/SeriesCard'
 import { categories } from '@/data/mock'
 import { createAnonClient } from '@/lib/supabase/anon'
 import { LoadingSpinner } from '@/components/LoadingSpinner'
+import { latestRating } from '@/lib/seriesRating'
 
 function SearchContent() {
   const searchParams = useSearchParams()
@@ -24,7 +25,7 @@ function SearchContent() {
       setLoading(true)
       const searchTerm = `%${query.trim()}%`
       let q = supabase.from('series')
-        .select('*, profiles!series_author_id_fkey(display_name, handle, avatar_url)').neq('is_removed', true)
+        .select('*, profiles!series_author_id_fkey(display_name, handle, avatar_url), chapters(rating, chapter_number)').neq('is_removed', true)
         .or(`title.ilike.${searchTerm},description.ilike.${searchTerm}`)
         .order('total_views', { ascending: false })
         .limit(50)
@@ -37,12 +38,12 @@ function SearchContent() {
       let extraResults: any[] = []
       if (data && data.length < 10) {
         const { data: genreMatch } = await supabase.from('series')
-          .select('*, profiles!series_author_id_fkey(display_name, handle, avatar_url)')
+          .select('*, profiles!series_author_id_fkey(display_name, handle, avatar_url), chapters(rating, chapter_number)')
           .neq('is_removed', true).contains('genres', [query.trim()])
           .order('total_views', { ascending: false }).limit(20)
         
         const { data: tagMatch } = await supabase.from('series')
-          .select('*, profiles!series_author_id_fkey(display_name, handle, avatar_url)')
+          .select('*, profiles!series_author_id_fkey(display_name, handle, avatar_url), chapters(rating, chapter_number)')
           .neq('is_removed', true).contains('tags', [query.trim()])
           .order('total_views', { ascending: false }).limit(20)
         
@@ -94,7 +95,7 @@ function SearchContent() {
             <div className="grid gap-2.5 md:gap-4 grid-cols-3 md:grid-cols-9">
               {results.map((s, i) => (
                 <SeriesCard key={s.id} title={s.title} slug={s.slug} author={s.profiles?.display_name || 'Unknown'} thumbnailUrl={s.thumbnail_url}
-                  latestChapter={0} rating="General" format={s.format} index={i} views={s.total_views} likes={s.total_likes} favorites={s.total_favorites} />
+                  latestChapter={0} rating={latestRating(s.chapters)} format={s.format} index={i} views={s.total_views} likes={s.total_likes} favorites={s.total_favorites} />
               ))}
             </div>
           ) : <p className="text-center py-14 text-[#71717a]">No series match your search.</p>}

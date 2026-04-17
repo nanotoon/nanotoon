@@ -56,6 +56,22 @@ function MatureTip({ mobile }: { mobile: boolean }) {
     <span className="absolute left-6 bottom-0 w-[320px] bg-[#27272a] border border-[#3f3f46] rounded-xl p-3 text-[0.68rem] text-[#a1a1aa] leading-relaxed whitespace-pre-line hidden group-hover:block z-[100] shadow-2xl">{MATURE_TEXT}</span></span>
 }
 
+const ONESHOT_TEXT = "A One Shot is a complete standalone story told in a single chapter — often a single page or a short collection of pages. If you upload only 1 page, your work is automatically marked One Shot. If you add more chapters later, it'll switch to Series automatically."
+
+function OneShotTip({ mobile }: { mobile: boolean }) {
+  const [open, setOpen] = useState(false)
+  if (mobile) return (<>
+    <button type="button" onClick={() => setOpen(true)} className="w-4 h-4 rounded-full border border-[#71717a] text-[0.6rem] text-[#71717a] bg-transparent cursor-pointer flex items-center justify-center ml-1">?</button>
+    {open && <div className="fixed inset-0 bg-black/90 z-[400] flex items-center justify-center p-4" onClick={() => setOpen(false)}>
+      <div className="bg-[#18181b] rounded-2xl max-w-[440px] w-full border border-[#27272a] p-5" onClick={e => e.stopPropagation()}>
+        <div className="flex justify-between items-center mb-3"><h3 className="font-semibold text-sm">One Shot</h3>
+        <button onClick={() => setOpen(false)} className="bg-[#27272a] border-none w-6 h-6 rounded-md cursor-pointer text-[#a1a1aa]">&times;</button></div>
+        <p className="text-[#a1a1aa] text-xs leading-relaxed">{ONESHOT_TEXT}</p></div></div>}
+  </>)
+  return <span className="relative group ml-1"><span className="w-4 h-4 rounded-full border border-[#71717a] text-[0.6rem] text-[#71717a] inline-flex items-center justify-center cursor-help">?</span>
+    <span className="absolute left-6 bottom-0 w-[320px] bg-[#27272a] border border-[#3f3f46] rounded-xl p-3 text-[0.68rem] text-[#a1a1aa] leading-relaxed hidden group-hover:block z-[100] shadow-2xl">{ONESHOT_TEXT}</span></span>
+}
+
 export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast: (m: string) => void }) {
   const { user } = useAuth()
   const anonDb = useMemo(() => createAnonClient(), [])
@@ -100,7 +116,9 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
       .then(({ data }: any) => setChapterNumber(data?.length > 0 ? data[0].chapter_number + 1 : 1))
   }, [selectedSeriesId, anonDb])
 
-  const canPublish = mode === 'existing' ? !!(rating && chapterTitle && selectedSeriesId) : !!(format && rating && chapterTitle && seriesTitle)
+  const canPublish = mode === 'existing'
+    ? !!(rating && chapterTitle && selectedSeriesId)
+    : !!(rating && chapterTitle && seriesTitle && (format || files.length === 1))
 
   function addFiles(newFiles: File[]) {
     const nf = newFiles.filter(f => {
@@ -189,12 +207,18 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
         }
       }
       const slug = seriesTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') + '-' + Date.now().toString(36)
+      // FIX: if publishing with only 1 page, force format to "One Shot" regardless of picked value.
+      const autoFormat = files.length === 1 ? 'One Shot' : format!
       const { data: ns, error: sErr } = await (createWriteClient() as any).from('series').insert({
-        title: seriesTitle, slug, description: desc || null, format: format!, genres: Array.from(genres),
+        title: seriesTitle, slug, description: desc || null, format: autoFormat, genres: Array.from(genres),
         thumbnail_url: thumbnailUrl, author_id: getAuthUserId()!, reading_mode: readingMode, reading_direction: readingMode === 'horizontal' ? readingDirection : 'ltr',
       }).select().single()
       if (sErr) throw new Error(sErr.message || 'Series creation failed')
       seriesId = ns.id
+    } else if (mode === 'existing' && seriesId) {
+      // FIX: adding a chapter to an existing series → that series now has 2+ chapters,
+      // so One Shot no longer applies. Auto-switch to Series.
+      await (createWriteClient() as any).from('series').update({ format: 'Series' }).eq('id', seriesId)
     }
     const pageUrls: string[] = []
     for (let i = 0; i < files.length; i++) {
@@ -289,7 +313,16 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
             </div>)}
             <div><label className="block text-xs text-[#71717a] mb-1">Chapter Title *</label><input value={chapterTitle} onChange={e => setChapterTitle(e.target.value)} placeholder="Chapter 1" className="w-full bg-[#27272a] border border-[#3f3f46] rounded-lg p-2 text-[#e4e4e7] text-sm outline-none focus:border-[#a855f7]" /></div>
             <div><label className="block text-xs text-[#71717a] mb-1">Chapter #</label><input type="number" value={chapterNumber} onChange={e => setChapterNumber(parseInt(e.target.value) || 1)} min={1} className="w-20 bg-[#27272a] border border-[#3f3f46] rounded-lg p-2 text-[#e4e4e7] text-sm outline-none focus:border-[#a855f7]" /></div>
-            {mode === 'new' && (<div><label className="block text-xs text-[#71717a] mb-1.5">Format *</label><div className="flex gap-1.5">{['Series', 'One Shot'].map(f => (<button key={f} onClick={() => setFormat(f)} className={'px-4 py-1.5 rounded-lg cursor-pointer text-xs font-medium border ' + (format === f ? 'border-[#a855f7] text-[#c084fc] bg-purple-500/10' : 'border-[#3f3f46] text-[#71717a] bg-transparent')}>{f}</button>))}</div></div>)}
+            {mode === 'new' && (<div>
+              <div className="flex items-center gap-1 mb-1.5"><label className="text-xs text-[#71717a]">Format *</label><OneShotTip mobile={isMobile} /></div>
+              <div className="flex gap-1.5">{['Series', 'One Shot'].map(f => {
+                const forcedOneShot = files.length === 1
+                const displayedFormat = forcedOneShot ? 'One Shot' : format
+                const disabled = forcedOneShot && f !== 'One Shot'
+                return (<button key={f} type="button" disabled={disabled} onClick={() => { if (!disabled) setFormat(f) }} className={'px-4 py-1.5 rounded-lg text-xs font-medium border ' + (displayedFormat === f ? 'border-[#a855f7] text-[#c084fc] bg-purple-500/10' : 'border-[#3f3f46] text-[#71717a] bg-transparent') + (disabled ? ' opacity-40 cursor-not-allowed' : ' cursor-pointer')}>{f}</button>)
+              })}</div>
+              {files.length === 1 && <p className="text-[0.65rem] text-[#71717a] mt-1">Auto-locked to One Shot because you only uploaded 1 page.</p>}
+            </div>)}
             <div><div className="flex items-center gap-1 mb-1.5"><label className="text-xs text-[#71717a]">Content Rating *</label><MatureTip mobile={isMobile} /></div>
               <div className="flex gap-1.5">
                 <button onClick={() => setRating('General')} className={'px-3 py-1.5 rounded-lg cursor-pointer text-xs font-medium border ' + (rating === 'General' ? 'border-green-500 text-green-400 bg-green-500/[0.08]' : 'border-[#3f3f46] text-[#71717a] bg-transparent')}>General</button>
