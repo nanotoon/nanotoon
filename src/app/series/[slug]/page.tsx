@@ -217,8 +217,21 @@ export default function ReaderPage() {
         if (!c && realLikes != null) setSeries((p: any) => p ? { ...p, total_likes: realLikes } : p)
         if (!viewIncremented.current) {
           viewIncremented.current = true
-          const wc = createWriteClient()
-          if (wc) await (wc as any).from('series').update({ total_views: (s.total_views ?? 0) + 1 }).eq('id', s.id)
+          // FIX: views are now bumped via /api/views which uses the service role
+          // on the server to bypass RLS. Previously this went through
+          // createWriteClient() which returned null for anonymous visitors and
+          // was blocked by RLS for non-admin logged-in users — only the admin
+          // account saw views tick up. Now every refresh counts, regardless of
+          // auth state.
+          fetch('/api/views', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ seriesId: s.id }),
+          }).then(r => r.ok ? r.json() : null).then((j: any) => {
+            if (!c && j?.total_views != null) setSeries((p: any) => p ? { ...p, total_views: j.total_views } : p)
+          }).catch(() => {})
+          // Optimistic UI bump so the number updates immediately even before
+          // the network round-trip resolves.
           if (!c) setSeries((p: any) => p ? { ...p, total_views: (p.total_views ?? 0) + 1 } : p)
         }
         clearTimeout(timeout)
@@ -236,10 +249,23 @@ export default function ReaderPage() {
     setChapterViews(ch.views ?? 0)
     anonDb.from('comments').select('*, profiles!comments_user_id_fkey(display_name, handle, avatar_url)').eq('chapter_id', ch.id).order('created_at', { ascending: false })
       .then(({ data }: any) => setComments(data ?? []))
-    ;const _wc = createWriteClient(); if (_wc) (_wc as any).from('chapters').update({ views: (ch.views ?? 0) + 1 }).eq('id', ch.id).then(() => {
-      setChapterViews(v => v + 1)
-      setChapters(prev => prev.map(c => c.id === ch.id ? { ...c, views: (c.views ?? 0) + 1 } : c))
-    })
+    // FIX: chapter views bumped via /api/views (service role, bypasses RLS).
+    // Same fix as series views above — before, RLS blocked everyone except the
+    // admin from incrementing chapter.views, so chapter view counts never moved
+    // for regular users.
+    fetch('/api/views', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chapterId: ch.id }),
+    }).then(r => r.ok ? r.json() : null).then((j: any) => {
+      if (j?.views != null) {
+        setChapterViews(j.views)
+        setChapters(prev => prev.map(c => c.id === ch.id ? { ...c, views: j.views } : c))
+      }
+    }).catch(() => {})
+    // Optimistic UI bump
+    setChapterViews(v => v + 1)
+    setChapters(prev => prev.map(c => c.id === ch.id ? { ...c, views: (c.views ?? 0) + 1 } : c))
   }, [currentCh, series?.id, chapters.length, anonDb])
 
   // FIX: when arriving via a notification URL with ?chapter=N, switch to that chapter

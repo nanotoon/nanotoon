@@ -23,6 +23,12 @@ export default function ProfilePage() {
   const [followerCount, setFollowerCount] = useState(0)
   const [followingCount, setFollowingCount] = useState(0)
   const [loading, setLoading] = useState(true)
+  // FIX: see user/[handle]/page.tsx — counts are read from the real
+  // likes/favorites tables, not the stale denormalized columns on series,
+  // because RLS prevents those columns from being updated for anyone who
+  // isn't the admin.
+  const [realTotalLikes, setRealTotalLikes] = useState(0)
+  const [realTotalFavorites, setRealTotalFavorites] = useState(0)
   const pfpRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -34,16 +40,31 @@ export default function ProfilePage() {
       anonDb.from('series').select('*, chapters(rating, chapter_number)').eq('author_id', user.id).neq('is_removed', true).order('created_at', { ascending: false }),
       anonDb.from('follows').select('*', { count: 'exact', head: true }).eq('following_id', user.id),
       anonDb.from('follows').select('*', { count: 'exact', head: true }).eq('follower_id', user.id),
-    ]).then(([s, fr, fg]: any) => {
-      if (!c) {
-        setMySeries(s.data ?? [])
-        setFollowerCount(fr.count ?? 0)
-        setFollowingCount(fg.count ?? 0)
-        setLoading(false)
+    ]).then(async ([s, fr, fg]: any) => {
+      if (c) return
+      const seriesList = s.data ?? []
+      setMySeries(seriesList)
+      setFollowerCount(fr.count ?? 0)
+      setFollowingCount(fg.count ?? 0)
+      setLoading(false)
+
+      // FIX: count likes/favorites from source-of-truth tables so the totals
+      // reflect actual engagement even when series.total_likes/total_favorites
+      // are stale (they only update for the admin under current RLS).
+      const seriesIds = seriesList.map((x: any) => x.id)
+      if (seriesIds.length > 0) {
+        const [likesRes, favsRes] = await Promise.all([
+          anonDb.from('likes').select('*', { count: 'exact', head: true }).in('series_id', seriesIds),
+          anonDb.from('favorites').select('*', { count: 'exact', head: true }).in('series_id', seriesIds),
+        ]) as any[]
+        if (!c) {
+          setRealTotalLikes(likesRes.count ?? 0)
+          setRealTotalFavorites(favsRes.count ?? 0)
+        }
       }
     }).catch(() => { if (!c) setLoading(false) })
     return () => { c = true; clearTimeout(timeout) }
-  }, [user, anonDb]) // FIX: was [user, supabase]
+  }, [user, anonDb, authLoading]) // FIX: was [user, supabase]
 
   async function handlePfp(e: React.ChangeEvent<HTMLInputElement>) {
     await ensureFreshSession()
@@ -73,9 +94,12 @@ export default function ProfilePage() {
   }
 
   const dn = profile?.display_name || 'User'; const h = profile?.handle || 'user'
+  // FIX: total_views comes from series.total_views (kept fresh by /api/views).
+  // total_likes/total_favorites come from source-of-truth tables, not stale
+  // denormalized columns. See detailed note near the useState above.
   const tv = mySeries.reduce((a, s) => a + (s.total_views ?? 0), 0)
-  const tl = mySeries.reduce((a, s) => a + (s.total_likes ?? 0), 0)
-  const tf = mySeries.reduce((a, s) => a + (s.total_favorites ?? 0), 0)
+  const tl = realTotalLikes
+  const tf = realTotalFavorites
 
   return (
     <div className="max-w-[960px] mx-auto px-4 py-6">

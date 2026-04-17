@@ -29,11 +29,25 @@ export default function PublicProfilePage() {
   const [isFollowing, setIsFollowing] = useState(false)
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
+  // FIX: Real totals come from the likes/favorites/views tables directly.
+  // The denormalized series.total_likes / series.total_favorites columns are
+  // only writable by the series author or the admin under RLS, so for everyone
+  // else they go stale — which is why the profile page was showing wrong
+  // numbers. We now derive totals from the source-of-truth tables (and from
+  // series.total_views, which IS kept fresh via the new /api/views endpoint).
+  const [realTotalLikes, setRealTotalLikes] = useState(0)
+  const [realTotalFavorites, setRealTotalFavorites] = useState(0)
 
   useEffect(() => {
     if (!handleParam) return
     let c = false
-    const timeout = setTimeout(() => { if (!c) setLoading(false) }, 6000)
+    // FIX: don't block on authLoading. The page itself is a public profile; we
+    // only need `user` to decide whether to show a "Following" toggle. So we
+    // kick off the load immediately and only do the follow-check piece once
+    // auth settles. Previously the render was gated on `authLoading || loading`
+    // together, which meant a slow auth init could leave the page spinning
+    // forever even though the public data was already fetched.
+    const timeout = setTimeout(() => { if (!c) setLoading(false) }, 8000)
     async function load() {
       try {
         // Look up profile by handle
@@ -47,20 +61,39 @@ export default function PublicProfilePage() {
           anonDb.from('follows').select('*', { count: 'exact', head: true }).eq('following_id', p.id),
           anonDb.from('follows').select('*', { count: 'exact', head: true }).eq('follower_id', p.id),
         ]) as any[]
-        if (!c) {
-          setTheirSeries(s.data ?? [])
-          setFollowerCount(fr.count ?? 0)
-          setFollowingCount(fg.count ?? 0)
+        if (c) return
+        const seriesList = s.data ?? []
+        setTheirSeries(seriesList)
+        setFollowerCount(fr.count ?? 0)
+        setFollowingCount(fg.count ?? 0)
+
+        // FIX: Let the page become interactive as soon as the series list is
+        // known. Everything below (accurate like/fav counts, follow state) is
+        // additive and shouldn't keep the spinner up.
+        clearTimeout(timeout)
+        setLoading(false)
+
+        // Compute REAL totals from the likes/favorites tables. This is what
+        // profile users actually expect to see.
+        const seriesIds = seriesList.map((x: any) => x.id)
+        if (seriesIds.length > 0) {
+          const [likesRes, favsRes] = await Promise.all([
+            anonDb.from('likes').select('*', { count: 'exact', head: true }).in('series_id', seriesIds),
+            anonDb.from('favorites').select('*', { count: 'exact', head: true }).in('series_id', seriesIds),
+          ]) as any[]
+          if (!c) {
+            setRealTotalLikes(likesRes.count ?? 0)
+            setRealTotalFavorites(favsRes.count ?? 0)
+          }
+        } else {
+          if (!c) { setRealTotalLikes(0); setRealTotalFavorites(0) }
         }
 
-        // Check if current user follows this profile
+        // Check if current user follows this profile (only once auth is ready)
         if (user && user.id !== p.id) {
           const { data: f } = await anonDb.from('follows').select('*').eq('follower_id', user.id).eq('following_id', p.id).maybeSingle() as { data: any }
           if (!c) setIsFollowing(!!f)
         }
-
-        clearTimeout(timeout)
-        if (!c) setLoading(false)
       } catch {
         clearTimeout(timeout)
         if (!c) setLoading(false)
@@ -98,7 +131,9 @@ export default function PublicProfilePage() {
     }
   }
 
-  if (loading || authLoading) return <div className="min-h-screen"><LoadingSpinner /></div>
+  // FIX: Don't gate render on authLoading — public profile doesn't need auth
+  // to be readable, and a slow auth init was keeping the spinner up forever.
+  if (loading) return <div className="min-h-screen"><LoadingSpinner /></div>
   if (notFound) return (
     <div className="max-w-[960px] mx-auto px-4 py-6">
       <Link href="/" className="mb-4 flex items-center gap-1 text-[#71717a] text-sm hover:text-[#e4e4e7] no-underline">
@@ -112,9 +147,13 @@ export default function PublicProfilePage() {
   const dn = profile.display_name || 'User'
   const h = profile.handle || 'user'
   const isSelf = !!user && user.id === profile.id
+  // FIX: total_views comes from series (now kept fresh by /api/views for
+  // everyone), but total_likes/total_favorites come from direct counts of the
+  // likes/favorites tables — NOT from the stale series.total_likes /
+  // series.total_favorites columns, which only update for the admin under RLS.
   const tv = theirSeries.reduce((a, s) => a + (s.total_views ?? 0), 0)
-  const tl = theirSeries.reduce((a, s) => a + (s.total_likes ?? 0), 0)
-  const tf = theirSeries.reduce((a, s) => a + (s.total_favorites ?? 0), 0)
+  const tl = realTotalLikes
+  const tf = realTotalFavorites
 
   return (
     <div className="max-w-[960px] mx-auto px-4 py-6">
