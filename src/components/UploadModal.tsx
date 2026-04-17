@@ -155,7 +155,8 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
   async function submit() {
     if (!user || !canPublish) return
     if (files.length === 0) { setUploadError('Please select at least one image'); onToast('Please select at least one image'); return }
-    if (files.length < 2) { setUploadError('Please select at least 2 pages for the chapter'); onToast('At least 2 pages required'); return }
+    // FIX: thumbnail required when creating a NEW series (user request)
+    if (mode === 'new' && !thumbFile) { setUploadError('Please upload a thumbnail for your series before publishing'); onToast('Thumbnail required'); return }
     const totalSize = files.reduce((s, f) => s + f.size, 0)
     if (totalSize > MAX_TOTAL_SERIES) { setUploadError('Total pages exceed 150MB'); onToast('Total pages exceed 150MB'); return }
     setUploading(true); setUploadError(''); setProgress('Preparing...')

@@ -5,12 +5,6 @@ import { useToast } from '@/components/Toast'
 import { useAuth } from '@/contexts/AuthContext'
 import { createClient } from '@/lib/supabase/client'
 
-function Toggle({ label, sub, defaultOn = true }: { label: string; sub: string; defaultOn?: boolean }) {
-  const [on, setOn] = useState(defaultOn); const { show } = useToast()
-  return (<div className="flex justify-between items-center"><div><p className="font-medium text-sm">{label}</p><p className="text-[#71717a] text-xs mt-0.5">{sub}</p></div>
-    <button onClick={() => { setOn(!on); show(on ? 'Disabled' : 'Enabled') }} className={`w-9 h-5 rounded-full border-none cursor-pointer relative shrink-0 ${on ? 'bg-[#7c3aed]' : 'bg-[#3f3f46]'}`}><span className={`absolute top-[1.5px] w-4 h-4 bg-white rounded-full transition-all ${on ? 'right-[2px]' : 'left-[1.5px]'}`}></span></button></div>)
-}
-
 export default function SettingsPage() {
   const { show } = useToast(); const { user, profile, refreshProfile } = useAuth()
   const supabase = useMemo(() => createClient(), [])
@@ -78,11 +72,6 @@ export default function SettingsPage() {
         )}
       </div>
 
-      <h2 className="text-sm font-semibold mb-2.5">Notifications</h2>
-      <div className="bg-[#18181b] rounded-2xl p-4 flex flex-col gap-3 mb-6">
-        <Toggle label="New chapter alerts" sub="When followed series update" />
-        <Toggle label="Comment replies" sub="When someone replies to you" />
-      </div>
       <h2 className="text-sm font-semibold mb-2.5">Danger Zone</h2>
       <div className="bg-[#18181b] rounded-2xl p-4">
         <button onClick={() => { if (confirm('Delete your account?')) if (confirm('All data permanently deleted. Confirm?')) show('Account deletion scheduled.') }}

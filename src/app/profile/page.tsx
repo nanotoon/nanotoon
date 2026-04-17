@@ -29,7 +29,7 @@ export default function ProfilePage() {
     const timeout = setTimeout(() => { if (!c) setLoading(false) }, 4000)
     let c = false
     Promise.all([
-      anonDb.from('series').select('*').eq('author_id', user.id).order('created_at', { ascending: false }),
+      anonDb.from('series').select('*').eq('author_id', user.id).neq('is_removed', true).order('created_at', { ascending: false }),
       anonDb.from('follows').select('*', { count: 'exact', head: true }).eq('following_id', user.id),
       anonDb.from('follows').select('*', { count: 'exact', head: true }).eq('follower_id', user.id),
     ]).then(([s, fr, fg]: any) => {

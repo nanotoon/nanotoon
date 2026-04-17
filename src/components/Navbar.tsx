@@ -7,6 +7,8 @@ import { useToast } from './Toast'
 import { Avatar } from './Avatar'
 import { useAuth } from '@/contexts/AuthContext'
 import { createClient } from '@/lib/supabase/client'
+import { createAnonClient } from '@/lib/supabase/anon'
+import { createWriteClient, ensureFreshSession } from '@/lib/supabase/write'
 
 export function Navbar() {
   const pathname = usePathname()
@@ -20,6 +22,8 @@ export function Navbar() {
   const searchRef = useRef<HTMLDivElement>(null)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const supabase = useMemo(() => createClient(), [])
+  const anonDb = useMemo(() => createAnonClient(), [])
+  const [unreadCount, setUnreadCount] = useState(0)
   const { user, profile, signOut } = useAuth()
   const isLoggedIn = !!user
 
@@ -37,6 +41,32 @@ export function Navbar() {
     function h(e: MouseEvent) { if (searchRef.current && !searchRef.current.contains(e.target as Node)) setShowLive(false) }
     document.addEventListener('mousedown', h); return () => document.removeEventListener('mousedown', h)
   }, [])
+
+  // Fetch unread notification count for the logged-in user
+  useEffect(() => {
+    if (!user) { setUnreadCount(0); return }
+    let cancelled = false
+    async function load() {
+      const { count } = await anonDb.from('notifications')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', user!.id).eq('read', false) as any
+      if (!cancelled) setUnreadCount(count ?? 0)
+    }
+    load()
+    return () => { cancelled = true }
+  }, [user, anonDb, pathname])
+
+  // Clear the notification badge immediately on click and mark all read in the database.
+  // This is intentional "bell-click = acknowledged" UX — matches Reddit, GitHub, etc.
+  async function handleBellClick() {
+    setUnreadCount(0)
+    if (!user) return
+    await ensureFreshSession()
+    const wc = createWriteClient()
+    if (wc) {
+      await (wc as any).from('notifications').update({ read: true }).eq('user_id', user.id).eq('read', false)
+    }
+  }
 
   function handleInput(val: string) {
     setSearchQuery(val)
@@ -84,9 +114,13 @@ export function Navbar() {
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>
                 <span className="hidden md:inline">Upload</span>
               </button>
-              <Link href="/notifications" className="relative w-[30px] h-[30px] md:w-[45px] md:h-[45px] bg-[#18181b] border border-[#3f3f46] rounded-lg md:rounded-xl flex items-center justify-center text-[#a1a1aa] no-underline">
+              <Link href="/notifications" onClick={handleBellClick} className="relative w-[30px] h-[30px] md:w-[45px] md:h-[45px] bg-[#18181b] border border-[#3f3f46] rounded-lg md:rounded-xl flex items-center justify-center text-[#a1a1aa] no-underline">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
-                <div className="absolute -top-1 -right-1 w-2.5 h-2.5 md:w-3 md:h-3 bg-red-600 rounded-full border-2 border-black"></div>
+                {unreadCount > 0 && (
+                  <div className="absolute -top-1 -right-1 min-w-[16px] h-[16px] md:min-w-[18px] md:h-[18px] bg-red-600 rounded-full border-2 border-black text-white text-[0.55rem] md:text-[0.65rem] font-bold flex items-center justify-center px-1">
+                    {unreadCount > 99 ? '99+' : unreadCount}
+                  </div>
+                )}
               </Link>
               <div className="relative">
                 <button onClick={() => setShowDropdown(!showDropdown)} className="bg-transparent border-none cursor-pointer p-0">

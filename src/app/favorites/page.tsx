@@ -66,7 +66,7 @@ export default function FavoritesPage() {
         </p>
       ) : (
         <div className="grid gap-2.5 md:gap-4 grid-cols-3 md:grid-cols-9">
-          {favorites.map((f, i) => f.series && (
+          {favorites.map((f, i) => f.series && !f.series.is_removed && (
             <SeriesCard
               key={f.series.id}
               title={f.series.title}

@@ -1,7 +1,7 @@
 'use client'
 import { LoadingSpinner } from '@/components/LoadingSpinner'
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
-import { useParams } from 'next/navigation'
+import { useParams, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { GRADIENTS } from '@/data/mock'
 import { Avatar } from '@/components/Avatar'
@@ -44,14 +44,16 @@ type CommentItemProps = {
   toggleCommentLike: (commentId: string, currentCount: number) => void
   likedComments: Set<string>
   deleteComment: (id: string, isSeries: boolean) => void
+  highlightedCommentId: string | null
 }
 
 function CommentItem(props: CommentItemProps) {
-  const { c, isSeries, isReply, userId, comments, seriesComments, editingId, editText, setEditText, setEditingId, editComment, replyingTo, setReplyingTo, replyText, setReplyText, postComment, toggleCommentLike, likedComments, deleteComment } = props
+  const { c, isSeries, isReply, userId, comments, seriesComments, editingId, editText, setEditText, setEditingId, editComment, replyingTo, setReplyingTo, replyText, setReplyText, postComment, toggleCommentLike, likedComments, deleteComment, highlightedCommentId } = props
   const isOwn = userId === c.user_id
   const replies = (isSeries ? seriesComments : comments).filter(r => r.parent_id === c.id)
+  const isHighlighted = highlightedCommentId === c.id
   return (
-    <div className={`${isReply ? 'ml-6 md:ml-10 border-l-2 border-[#27272a] pl-3' : ''} mb-3`}>
+    <div id={`comment-${c.id}`} className={`${isReply ? 'ml-6 md:ml-10 border-l-2 border-[#27272a] pl-3' : ''} mb-3 rounded-lg transition-colors duration-500 ${isHighlighted ? 'bg-purple-500/15 ring-2 ring-purple-500/50 px-2 py-1.5 -mx-2' : ''}`}>
       <div className="flex gap-2">
         {c.profiles?.handle ? (
           <Link href={`/user/${c.profiles.handle}`} className="shrink-0 no-underline">
@@ -115,11 +117,19 @@ function CommentItem(props: CommentItemProps) {
 
 export default function ReaderPage() {
   const params = useParams()
+  const searchParams = useSearchParams()
   const { show } = useToast()
   const { user, profile } = useAuth()
   const slug = params.slug as string
   const anonDb = useMemo(() => createAnonClient(), [])
   const viewIncremented = useRef(false)
+
+  // Query params for jumping to a specific comment from a notification
+  const targetCommentId = searchParams.get('comment') || searchParams.get('seriesComment')
+  const targetChapterNum = searchParams.get('chapter')
+  const isSeriesCommentTarget = !!searchParams.get('seriesComment')
+  const [highlightedComment, setHighlightedComment] = useState<string | null>(null)
+  const commentJumpHandled = useRef(false)
 
   const [series, setSeries] = useState<any>(null)
   const [chapters, setChapters] = useState<any[]>([])
@@ -229,6 +239,39 @@ export default function ReaderPage() {
       setChapters(prev => prev.map(c => c.id === ch.id ? { ...c, views: (c.views ?? 0) + 1 } : c))
     })
   }, [currentCh, series?.id, chapters.length, anonDb])
+
+  // FIX: when arriving via a notification URL with ?chapter=N, switch to that chapter
+  // once chapters are loaded. Only fires once per page load (commentJumpHandled ref).
+  useEffect(() => {
+    if (!targetChapterNum || !chapters.length || commentJumpHandled.current) return
+    const n = parseInt(targetChapterNum)
+    if (!isNaN(n) && chapters.some(c => c.chapter_number === n) && n !== currentCh) {
+      setCurrentCh(n)
+    }
+  }, [chapters.length, targetChapterNum]) // eslint-disable-line
+
+  // FIX: jump to specific comment when coming from a notification.
+  //   - If ?seriesComment=ID → open the series comments modal, scroll & highlight it
+  //   - If ?comment=ID (chapter comment) → scroll the inline chapter comments section & highlight it
+  // Runs after the relevant comments are loaded. Uses a ref to ensure it only fires once.
+  useEffect(() => {
+    if (!targetCommentId || commentJumpHandled.current) return
+    const relevantList = isSeriesCommentTarget ? seriesComments : comments
+    if (!relevantList.some(c => c.id === targetCommentId)) return  // not loaded yet
+
+    commentJumpHandled.current = true
+    if (isSeriesCommentTarget) setShowSeriesComments(true)
+
+    // Delay slightly so modal/DOM is painted before scrolling
+    setTimeout(() => {
+      const el = document.getElementById(`comment-${targetCommentId}`)
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        setHighlightedComment(targetCommentId)
+        setTimeout(() => setHighlightedComment(null), 2500)
+      }
+    }, 250)
+  }, [comments, seriesComments, targetCommentId, isSeriesCommentTarget])
 
   // Fullscreen keyboard nav
   useEffect(() => {
@@ -452,6 +495,7 @@ export default function ReaderPage() {
     editingId, editText, setEditText, setEditingId, editComment,
     replyingTo, setReplyingTo, replyText, setReplyText,
     postComment, toggleCommentLike, likedComments, deleteComment,
+    highlightedCommentId: highlightedComment,
   }
 
   return (

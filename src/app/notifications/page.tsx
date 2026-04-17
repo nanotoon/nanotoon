@@ -83,13 +83,35 @@ export default function NotificationsPage() {
       return
     }
 
+    // FIX: comment-related notifications (comment / reply / comment_like) →
+    // fetch the comment row so we can tell whether it's a series-level comment
+    // (chapter_id null) or a chapter-level comment, and build a URL that tells
+    // the reader page to open the right view and scroll the target comment.
+    if (n.comment_id && (n.type === 'comment' || n.type === 'reply' || n.type === 'comment_like')) {
+      const { data: cmt } = await anonDb.from('comments').select('series_id, chapter_id').eq('id', n.comment_id).maybeSingle() as { data: any }
+      if (cmt?.series_id) {
+        const { data: s } = await anonDb.from('series').select('slug').eq('id', cmt.series_id).maybeSingle() as { data: any }
+        if (s?.slug) {
+          if (cmt.chapter_id) {
+            // Chapter comment — need the chapter number to switch to it
+            const { data: ch } = await anonDb.from('chapters').select('chapter_number').eq('id', cmt.chapter_id).maybeSingle() as { data: any }
+            const chParam = ch?.chapter_number ? `&chapter=${ch.chapter_number}` : ''
+            router.push(`/series/${s.slug}?comment=${n.comment_id}${chParam}`)
+          } else {
+            // Series-level comment — will open series comments modal
+            router.push(`/series/${s.slug}?seriesComment=${n.comment_id}`)
+          }
+          return
+        }
+      }
+    }
+
     // FIX: notifications with a series_id → look up slug and navigate to the series page
     if (n.series_id) {
       const { data: s } = await anonDb.from('series').select('slug').eq('id', n.series_id).maybeSingle() as { data: any }
       if (s?.slug) { router.push(`/series/${s.slug}`); return }
     }
 
-    // Follow notifications with an actor → go to their profile-ish fallback: just mark read
     // Default → just mark read and show detail
     setSelectedNotif(n)
   }
