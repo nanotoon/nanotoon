@@ -191,30 +191,47 @@ export default function ReaderPage() {
     const timeout = setTimeout(() => { if (!c) setLoading(false) }, 10000)
     async function load() {
       try {
+        // Fetch the series row. We don't know its id yet, so we can't start
+        // the real-like-count query in parallel from the outside. Instead we
+        // fetch series + chapters first, then parallelize everything that
+        // depends on series.id — including the real like count — into ONE
+        // Promise.all, and apply the fresh like count alongside the initial
+        // setSeries so the UI never shows the stale series.total_likes value
+        // (which would cause a 1–2s jump from e.g. 2 → 3).
         const { data: s } = await anonDb.from('series').select('*, profiles!series_author_id_fkey(display_name, handle, avatar_url)').eq('slug', slug).single() as { data: any }
         if (!s || c) { setLoading(false); return }
-        setSeries(s)
-        const { data: chs } = await anonDb.from('chapters').select('*').eq('series_id', s.id).order('chapter_number', { ascending: true }) as { data: any[] | null }
+
+        // Kick off everything that depends only on series.id in parallel so
+        // the page paints with accurate numbers on the first render.
+        const uid = user ? getAuthUserId() : null
+        const [chsRes, scRes, likesCountRes, lkRes, fvRes, fwRes, clRes] = await Promise.all([
+          anonDb.from('chapters').select('*').eq('series_id', s.id).order('chapter_number', { ascending: true }),
+          anonDb.from('comments').select('*, profiles!comments_user_id_fkey(display_name, handle, avatar_url)').eq('series_id', s.id).is('chapter_id', null).order('created_at', { ascending: false }),
+          anonDb.from('likes').select('*', { count: 'exact', head: true }).eq('series_id', s.id),
+          uid ? anonDb.from('likes').select('*').eq('user_id', uid).eq('series_id', s.id).maybeSingle() : Promise.resolve({ data: null }),
+          uid ? anonDb.from('favorites').select('*').eq('user_id', uid).eq('series_id', s.id).maybeSingle() : Promise.resolve({ data: null }),
+          uid ? anonDb.from('follows').select('*').eq('follower_id', uid).eq('following_id', s.author_id).maybeSingle() : Promise.resolve({ data: null }),
+          uid ? anonDb.from('comment_likes').select('comment_id').eq('user_id', uid) : Promise.resolve({ data: [] }),
+        ]) as any[]
         if (c) return
+
+        // Apply the real like count to series at the same time we commit it
+        // to state, so the "float menu" number is correct from frame 1.
+        const realLikes = likesCountRes?.count
+        setSeries(realLikes != null ? { ...s, total_likes: realLikes } : s)
+
+        const chs = chsRes.data as any[] | null
         setChapters(chs ?? [])
         if (chs?.length) { setCurrentCh(chs[chs.length - 1].chapter_number); setChapterViews(chs[chs.length - 1].views ?? 0) }
-        const { data: sc } = await anonDb.from('comments').select('*, profiles!comments_user_id_fkey(display_name, handle, avatar_url)').eq('series_id', s.id).is('chapter_id', null).order('created_at', { ascending: false }) as { data: any[] | null }
-        if (!c) setSeriesComments(sc ?? [])
-        if (user) {
-          const uid = getAuthUserId()
-          if (uid) {
-            const [lk, fv, fw, cl] = await Promise.all([
-              anonDb.from('likes').select('*').eq('user_id', uid).eq('series_id', s.id).maybeSingle(),
-              anonDb.from('favorites').select('*').eq('user_id', uid).eq('series_id', s.id).maybeSingle(),
-              anonDb.from('follows').select('*').eq('follower_id', uid).eq('following_id', s.author_id).maybeSingle(),
-              anonDb.from('comment_likes').select('comment_id').eq('user_id', uid),
-            ]) as any[]
-            if (!c) { setLiked(!!lk.data); setFavorited(!!fv.data); setIsFollowing(!!fw.data); setLikedComments(new Set((cl.data ?? []).map((x: any) => x.comment_id))) }
-          }
+        setSeriesComments((scRes.data ?? []) as any[])
+
+        if (user && uid) {
+          setLiked(!!lkRes.data)
+          setFavorited(!!fvRes.data)
+          setIsFollowing(!!fwRes.data)
+          setLikedComments(new Set(((clRes.data ?? []) as any[]).map((x: any) => x.comment_id)))
         }
-        // Read real like count from likes table (series.total_likes can be stale)
-        const { count: realLikes } = await anonDb.from('likes').select('*', { count: 'exact', head: true }).eq('series_id', s.id) as any
-        if (!c && realLikes != null) setSeries((p: any) => p ? { ...p, total_likes: realLikes } : p)
+
         if (!viewIncremented.current) {
           viewIncremented.current = true
           // FIX: views are now bumped via /api/views which uses the service role

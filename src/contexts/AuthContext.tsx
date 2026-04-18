@@ -65,6 +65,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setUser(null); setProfile(null);
         } else {
           setUser(session.user);
+          // Seed an optimistic profile from user_metadata so OAuth avatars
+          // (Google/Discord) render INSTANTLY instead of flashing the default
+          // initials for 1–2s while the DB profile fetch is in flight. The
+          // real DB profile replaces this as soon as fetchProfile resolves —
+          // the avatar URL is the same in both, so there's no visible snap.
+          const meta = session.user.user_metadata || {};
+          setProfile({
+            id: session.user.id,
+            display_name: meta.display_name || meta.full_name || meta.name || session.user.email?.split("@")[0] || "User",
+            handle: meta.handle || meta.preferred_username || "user",
+            avatar_url: meta.avatar_url || null,
+            bio: null,
+            links: null,
+            created_at: null,
+          } as Profile);
           await fetchProfile(session.user.id);
         }
       } catch (err) {
@@ -81,7 +96,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_e: any, session: any) => {
       const u = session?.user ?? null;
       setUser(u);
-      if (u) await fetchProfile(u.id); else setProfile(null);
+      if (u) {
+        // Same optimistic seed on auth-state-change (covers fresh sign-ins).
+        const meta = u.user_metadata || {};
+        setProfile((prev: Profile | null) => prev ?? ({
+          id: u.id,
+          display_name: meta.display_name || meta.full_name || meta.name || u.email?.split("@")[0] || "User",
+          handle: meta.handle || meta.preferred_username || "user",
+          avatar_url: meta.avatar_url || null,
+          bio: null,
+          links: null,
+          created_at: null,
+        } as Profile));
+        await fetchProfile(u.id);
+      } else {
+        setProfile(null);
+      }
       setLoading(false);
     });
 
