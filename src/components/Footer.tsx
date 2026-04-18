@@ -1,8 +1,26 @@
+'use client'
 import Link from 'next/link'
+import { usePathname } from 'next/navigation'
+import { AdsterraBanner } from './AdsterraBanner'
 
 export function Footer() {
+  const pathname = usePathname() || ''
+
+  // Show the Adsterra footer banner only on:
+  //   • Homepage (Read tab)           → "/"
+  //   • Categories tab                → "/categories" (and any sub-routes)
+  //   • Any series / chapter page     → "/series/<slug>" (and its sub-routes)
+  // Note: we intentionally exclude the series edit routes ("/series/<slug>/edit"),
+  // which are author-only pages and not the public chapter reader.
+  const showAd =
+    pathname === '/' ||
+    pathname === '/categories' ||
+    pathname.startsWith('/categories/') ||
+    (pathname.startsWith('/series/') && !pathname.includes('/edit'))
+
   return (
     <footer className="border-t border-[#27272a] mt-10">
+      {showAd && <AdsterraBanner />}
       <div className="px-4 md:px-8 py-6 flex flex-col md:flex-row items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <div className="w-6 h-6 bg-gradient-to-br from-[#7c3aed] to-[#c026d3] rounded-md flex items-center justify-center">
