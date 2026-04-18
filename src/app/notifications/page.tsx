@@ -71,8 +71,8 @@ export default function NotificationsPage() {
   async function handleClick(n: any) {
     await markRead(n.id)
 
-    // Removal/restoration/welcome notifications → show detail inline
-    if (n.type === 'removal' || n.type === 'restoration' || n.type === 'welcome') {
+    // Removal/restoration/welcome/ban/unban notifications → show detail inline
+    if (n.type === 'removal' || n.type === 'restoration' || n.type === 'welcome' || n.type === 'ban' || n.type === 'unban') {
       setSelectedNotif(n)
       return
     }
@@ -121,23 +121,29 @@ export default function NotificationsPage() {
     const isRemoval = selectedNotif.type === 'removal'
     const isRestoration = selectedNotif.type === 'restoration'
     const isWelcome = selectedNotif.type === 'welcome'
+    const isBan = selectedNotif.type === 'ban'
+    const isUnban = selectedNotif.type === 'unban'
+    const isRed = isRemoval || isBan
+    const isGreen = isRestoration || isUnban
     return (
       <div className="max-w-[680px] mx-auto px-4 py-6">
         <button onClick={() => setSelectedNotif(null)} className="mb-4 flex items-center gap-1 text-[#71717a] text-sm hover:text-[#e4e4e7] bg-transparent border-none cursor-pointer p-0">
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="15 18 9 12 15 6"/></svg>Back to Notifications
         </button>
 
-        <div className={`rounded-2xl p-5 border ${isRemoval ? 'bg-red-500/5 border-red-500/20' : isRestoration ? 'bg-green-500/5 border-green-500/20' : isWelcome ? 'bg-purple-500/5 border-purple-500/20' : 'bg-[#18181b] border-[#27272a]'}`}>
+        <div className={`rounded-2xl p-5 border ${isRed ? 'bg-red-500/5 border-red-500/20' : isGreen ? 'bg-green-500/5 border-green-500/20' : isWelcome ? 'bg-purple-500/5 border-purple-500/20' : 'bg-[#18181b] border-[#27272a]'}`}>
           <div className="flex items-center gap-2 mb-3">
             {isRemoval && <span className="text-xl">⚠️</span>}
+            {isBan && <span className="text-xl">🚫</span>}
             {isRestoration && <span className="text-xl">✅</span>}
+            {isUnban && <span className="text-xl">🎊</span>}
             {isWelcome && <span className="text-xl">🎉</span>}
-            <h2 className={`text-lg font-bold ${isRemoval ? 'text-[#f87171]' : isRestoration ? 'text-green-400' : isWelcome ? 'text-[#c084fc]' : 'text-[#e4e4e7]'}`}>
-              {isRemoval ? 'Content Removed' : isRestoration ? 'Content Restored' : isWelcome ? 'Welcome to NANOTOON!' : 'Notification'}
+            <h2 className={`text-lg font-bold ${isRed ? 'text-[#f87171]' : isGreen ? 'text-green-400' : isWelcome ? 'text-[#c084fc]' : 'text-[#e4e4e7]'}`}>
+              {isRemoval ? 'Content Removed' : isBan ? 'Account Suspended' : isRestoration ? 'Content Restored' : isUnban ? 'Account Reinstated' : isWelcome ? 'Welcome to NANOTOON!' : 'Notification'}
             </h2>
           </div>
           <p className="text-[#d4d4d8] text-sm leading-relaxed mb-4">{selectedNotif.message}</p>
-          {isRemoval && (
+          {(isRemoval || isBan) && (
             <p className="text-[#71717a] text-xs">
               If you believe this was a mistake, contact <a href="mailto:nanotooncontact@gmail.com" className="text-[#c084fc]">nanotooncontact@gmail.com</a>
             </p>
@@ -170,11 +176,15 @@ export default function NotificationsPage() {
         <div className="bg-[#18181b] rounded-2xl px-4">
           {notifs.map(n => (
             <div key={n.id} onClick={() => handleClick(n)} className="flex items-start gap-2.5 py-3 border-b border-[#27272a] last:border-b-0 cursor-pointer hover:bg-white/[0.02]">
-              <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${n.read ? 'opacity-0' : n.type === 'removal' ? 'bg-red-500' : 'bg-[#a855f7]'}`}></div>
+              <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${n.read ? 'opacity-0' : (n.type === 'removal' || n.type === 'ban') ? 'bg-red-500' : 'bg-[#a855f7]'}`}></div>
               {n.type === 'removal' ? (
                 <div className="w-8 h-8 rounded-full bg-red-500/10 flex items-center justify-center shrink-0 text-sm">⚠️</div>
+              ) : n.type === 'ban' ? (
+                <div className="w-8 h-8 rounded-full bg-red-500/10 flex items-center justify-center shrink-0 text-sm">🚫</div>
               ) : n.type === 'restoration' ? (
                 <div className="w-8 h-8 rounded-full bg-green-500/10 flex items-center justify-center shrink-0 text-sm">✅</div>
+              ) : n.type === 'unban' ? (
+                <div className="w-8 h-8 rounded-full bg-green-500/10 flex items-center justify-center shrink-0 text-sm">🎊</div>
               ) : n.type === 'welcome' ? (
                 <div className="w-8 h-8 rounded-full bg-purple-500/10 flex items-center justify-center shrink-0 text-sm">🎉</div>
               ) : n.actor?.avatar_url ? (
@@ -200,7 +210,7 @@ export default function NotificationsPage() {
               )}
               <div className="flex-1 min-w-0">
                 <div className={`text-sm ${n.read ? 'text-[#a1a1aa]' : 'text-[#e4e4e7]'}`}>
-                  {n.type === 'removal' || n.type === 'restoration' || n.type === 'welcome' ? (
+                  {n.type === 'removal' || n.type === 'restoration' || n.type === 'welcome' || n.type === 'ban' || n.type === 'unban' ? (
                     <span>{n.message}</span>
                   ) : n.actor?.handle ? (
                     <>

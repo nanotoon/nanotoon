@@ -152,6 +152,23 @@ export default function PublicProfilePage() {
     }
   }
 
+  // Admin-only: ban this user. Mirrors the adminRemove flow on the series page.
+  async function banUser() {
+    if (!profile) return
+    if (!confirm(`Ban "${profile.display_name || 'this user'}" for policy violations? They will be signed out and notified.`)) return
+    if (!confirm('Are you sure? You can always unban them later from /admin/banned.')) return
+    await ensureFreshSession()
+    const res = await fetch('/api/admin-ban', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'ban', userId: profile.id }),
+    })
+    const json = await res.json()
+    if (!res.ok) { show('Ban failed: ' + (json.error || 'Unknown error')); return }
+    setProfile((p: any) => p ? { ...p, is_banned: true, banned_at: new Date().toISOString() } : p)
+    show('User banned. They will be signed out on their next action.')
+  }
+
   // FIX: Don't gate render on authLoading — public profile doesn't need auth
   // to be readable, and a slow auth init was keeping the spinner up forever.
   if (loading) return <div className="min-h-screen"><LoadingSpinner /></div>
@@ -168,6 +185,10 @@ export default function PublicProfilePage() {
   const dn = profile.display_name || 'User'
   const h = profile.handle || 'user'
   const isSelf = !!user && user.id === profile.id
+  // Admin can ban any user other than themselves. Same email check used
+  // elsewhere (admin/trash, adminRemove on series page).
+  const isAdmin = user?.email === 'nanotooncontact@gmail.com' && !isSelf
+  const isBanned = !!profile.is_banned
   // FIX: total_views comes from series (now kept fresh by /api/views for
   // everyone), but total_likes/total_favorites come from direct counts of the
   // likes/favorites tables — NOT from the stale series.total_likes /
@@ -181,6 +202,12 @@ export default function PublicProfilePage() {
       <Link href="/" className="mb-4 flex items-center gap-1 text-[#71717a] text-sm hover:text-[#e4e4e7] no-underline">
         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="15 18 9 12 15 6"/></svg>Back
       </Link>
+      {isBanned && (
+        <div className="mb-4 bg-red-500/5 border border-red-500/20 rounded-2xl p-3 flex items-center gap-2">
+          <span className="text-base">🚫</span>
+          <span className="text-[#f87171] text-xs">This account has been suspended for policy violations.</span>
+        </div>
+      )}
       <div className="flex items-center gap-3.5 mb-5 flex-wrap">
         <div className="relative shrink-0">
           <div className="w-[68px] h-[68px] rounded-full border-[3px] border-[#a855f7] overflow-hidden">
@@ -202,6 +229,9 @@ export default function PublicProfilePage() {
             </button>
           )}
           <button onClick={() => setShowShare(true)} className="px-3 py-1.5 border border-[#3f3f46] rounded-lg bg-transparent text-[#c084fc] cursor-pointer text-xs flex items-center gap-1 hover:border-[#a855f7]">Share Profile</button>
+          {isAdmin && !isBanned && (
+            <button onClick={banUser} className="px-3 py-1.5 border border-red-500/30 rounded-lg bg-transparent text-[#f87171] cursor-pointer text-xs hover:bg-red-500/10">Ban User</button>
+          )}
         </div>
       </div>
       {profile.bio && <div className="bg-[#18181b] rounded-2xl p-4 mb-5"><h3 className="font-semibold mb-2 text-sm">About</h3><p className="text-[#d4d4d8] text-sm">{profile.bio}</p>{profile.links && <p className="text-[#c084fc] mt-2 text-xs">{profile.links}</p>}</div>}

@@ -20,9 +20,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       // Use anonDb for profile reads — no JWT locks, no hangs
       const { data } = await anonDb.from("profiles").select("*").eq("id", uid).maybeSingle() as { data: any };
+      // If the admin flagged this account as banned, force a sign-out. The
+      // ban flag is set via /api/admin-ban and picked up on the very next
+      // session read (e.g. page load or onAuthStateChange). A notification
+      // has already been inserted by the ban endpoint, so they'll see the
+      // reason on their next visit (or via email if notifications are piped).
+      if (data?.is_banned) {
+        try { await supabase.auth.signOut(); } catch {}
+        setUser(null);
+        setProfile(null);
+        if (typeof window !== "undefined") {
+          try { alert("Your account has been suspended. Please check your notifications or contact nanotooncontact@gmail.com to appeal."); } catch {}
+          window.location.replace("/");
+        }
+        return;
+      }
       setProfile((data as Profile) ?? null);
     } catch { setProfile(null); }
-  }, [anonDb]);
+  }, [anonDb, supabase]);
 
   const refreshProfile = useCallback(async () => { if (user) await fetchProfile(user.id); }, [user, fetchProfile]);
 
