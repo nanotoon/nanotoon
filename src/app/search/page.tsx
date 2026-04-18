@@ -24,36 +24,70 @@ function SearchContent() {
     async function search() {
       setLoading(true)
       const searchTerm = `%${query.trim()}%`
+      // FIX: Added username search. We first look up profiles whose display_name
+      // or handle matches the query, then include any series authored by those
+      // profiles. Done as a separate query in parallel with the title/desc
+      // search (rather than an embedded profiles filter) because embedded
+      // filters in PostgREST filter the join, not the parent row, so series
+      // wouldn't actually come back. Results are merged with the existing
+      // title/description results below.
+      const cleanQuery = query.trim()
       let q = supabase.from('series')
         .select('*, profiles!series_author_id_fkey(display_name, handle, avatar_url), chapters(rating, chapter_number)').neq('is_removed', true)
         .or(`title.ilike.${searchTerm},description.ilike.${searchTerm}`)
         .order('total_views', { ascending: false })
         .limit(50)
-      
+
       if (genreFilter !== 'All') q = q.contains('genres', [genreFilter])
       if (formatFilter !== 'All') q = q.eq('format', formatFilter)
-      
-      const { data } = await q
+
+      const [titleRes, authorProfiles] = await Promise.all([
+        q,
+        supabase.from('profiles')
+          .select('id')
+          .or(`display_name.ilike.${searchTerm},handle.ilike.${searchTerm}`)
+          .limit(50),
+      ]) as any[]
+      const data = titleRes.data
+
+      // Pull series authored by any matching profile. Same format/genre filters
+      // are applied so the Format/Genre pills still work for username hits.
+      let authorMatches: any[] = []
+      const authorIds = ((authorProfiles?.data ?? []) as any[]).map((p: any) => p.id)
+      if (authorIds.length > 0) {
+        let aq = supabase.from('series')
+          .select('*, profiles!series_author_id_fkey(display_name, handle, avatar_url), chapters(rating, chapter_number)')
+          .neq('is_removed', true)
+          .in('author_id', authorIds)
+          .order('total_views', { ascending: false })
+          .limit(50)
+        if (genreFilter !== 'All') aq = aq.contains('genres', [genreFilter])
+        if (formatFilter !== 'All') aq = aq.eq('format', formatFilter)
+        const { data: ad } = await aq as any
+        authorMatches = (ad ?? []) as any[]
+      }
 
       let extraResults: any[] = []
       if (data && data.length < 10) {
         const { data: genreMatch } = await supabase.from('series')
           .select('*, profiles!series_author_id_fkey(display_name, handle, avatar_url), chapters(rating, chapter_number)')
-          .neq('is_removed', true).contains('genres', [query.trim()])
+          .neq('is_removed', true).contains('genres', [cleanQuery])
           .order('total_views', { ascending: false }).limit(20)
-        
+
         const { data: tagMatch } = await supabase.from('series')
           .select('*, profiles!series_author_id_fkey(display_name, handle, avatar_url), chapters(rating, chapter_number)')
-          .neq('is_removed', true).contains('tags', [query.trim()])
+          .neq('is_removed', true).contains('tags', [cleanQuery])
           .order('total_views', { ascending: false }).limit(20)
-        
+
         const existingIds = new Set((data ?? []).map((s: any) => s.id))
         extraResults = [...((genreMatch ?? []) as any[]), ...((tagMatch ?? []) as any[])].filter(s => !existingIds.has(s.id))
       }
 
       if (!cancelled) {
         const seen = new Set<string>()
-        const all = [...((data ?? []) as any[]), ...extraResults].filter(s => {
+        // Order: title/description matches first, then author-name matches,
+        // then genre/tag fallbacks. De-duplicated by series id.
+        const all = [...((data ?? []) as any[]), ...authorMatches, ...extraResults].filter(s => {
           if (seen.has(s.id)) return false
           seen.add(s.id); return true
         })
