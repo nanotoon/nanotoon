@@ -6,6 +6,7 @@ import { categories } from '@/data/mock'
 import { useToast } from '@/components/Toast'
 import { createAnonClient } from '@/lib/supabase/anon'
 import { latestRating } from '@/lib/seriesRating'
+import { hydrateSeriesCounts } from '@/lib/hydrateSeriesCounts'
 
 export default function CategoriesPage() {
   const { show } = useToast()
@@ -34,7 +35,10 @@ export default function CategoriesPage() {
           .order('updated_at', { ascending: false }).limit(limit)
         if (selectedCat) q = q.contains('genres', [selectedCat])
         const { data } = await q
-        if (!cancelled) { setSeries(data ?? []); setLoading(false) }
+        // Hydrate real like/favorite counts from the source-of-truth tables
+        // so cards here match the series-page float menu and user profile.
+        const hydrated = await hydrateSeriesCounts(supabase, (data ?? []) as any[])
+        if (!cancelled) { setSeries(hydrated); setLoading(false) }
       } catch { if (!cancelled) setLoading(false) }
     }
     load()

@@ -145,15 +145,45 @@ export default function EditSeriesPage() {
         thumbnailUrl = json.url
       } catch (e: any) { show('Thumbnail upload failed: ' + e.message); setSaving(false); return }
     }
+    const newDirection = readingMode === 'horizontal' ? readingDirection : 'ltr'
     const { error } = await (createWriteClient() as any).from('series').update({
       title, description: desc, format, genres: Array.from(genres),
       thumbnail_url: thumbnailUrl, reading_mode: readingMode,
-      reading_direction: readingMode === 'horizontal' ? readingDirection : 'ltr',
+      reading_direction: newDirection,
       updated_at: new Date().toISOString()
     }).eq('id', series.id)
     if (error) show('Save failed: ' + error.message)
     else {
-      setSeries((s: any) => ({ ...s, title, description: desc, format, genres: Array.from(genres), thumbnail_url: thumbnailUrl }))
+      // FIX: cascade reading_mode / reading_direction to every chapter of this
+      // series when either value changed.
+      //
+      // Why: the reader resolves mode via
+      //      chapter.reading_mode || series.reading_mode
+      // — chapter value takes precedence. At upload time both UploadModal and
+      // the initial series insert stamp reading_mode onto the chapter row as
+      // well as the series row. So if a creator uploads as horizontal and
+      // later edits the series to webtoon (or vice versa), only the series
+      // row gets updated — every existing chapter keeps its stamped value
+      // and the reader keeps showing the old mode. Cascading here re-stamps
+      // the chapters so the edit actually takes effect.
+      //
+      // There is no per-chapter reading-mode UI anywhere in the app (chapter
+      // edit only changes title + rating), so no user-authored per-chapter
+      // preference is being clobbered by this cascade.
+      const modeChanged = (series.reading_mode || 'webtoon') !== readingMode
+      const dirChanged  = (series.reading_direction || 'ltr') !== newDirection
+      if (modeChanged || dirChanged) {
+        const { error: chErr } = await (createWriteClient() as any)
+          .from('chapters')
+          .update({ reading_mode: readingMode, reading_direction: newDirection })
+          .eq('series_id', series.id)
+        if (chErr) {
+          // Surface the failure but don't abort — the series row was already
+          // saved. The creator can retry by toggling + saving again.
+          show('Chapters not synced: ' + chErr.message)
+        }
+      }
+      setSeries((s: any) => ({ ...s, title, description: desc, format, genres: Array.from(genres), thumbnail_url: thumbnailUrl, reading_mode: readingMode, reading_direction: newDirection }))
       setNewThumbFile(null)
       show('Changes saved!')
       // Kick to the author's profile so their latest edit appears up top.

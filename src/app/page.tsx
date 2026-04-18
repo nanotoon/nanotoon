@@ -6,6 +6,7 @@ import { LoadingSpinner } from '@/components/LoadingSpinner'
 import { useToast } from '@/components/Toast'
 import { createAnonClient } from '@/lib/supabase/anon'
 import { latestRating } from '@/lib/seriesRating'
+import { hydrateSeriesCounts } from '@/lib/hydrateSeriesCounts'
 
 export default function HomePage() {
   const { show } = useToast()
@@ -37,7 +38,14 @@ export default function HomePage() {
         const [mv, lt] = await Promise.all([mvQ, latQ])
         if (mv.error) console.error('Most viewed query error:', mv.error.message)
         if (lt.error) console.error('Latest query error:', lt.error.message)
-        if (!cancelled) { setMostViewed(mv.data ?? []); setLatest(lt.data ?? []) }
+        // Hydrate real like/favorite counts from the source-of-truth tables
+        // so cards here match the series-page float menu and user profile.
+        // See src/lib/hydrateSeriesCounts.ts for the full explanation.
+        const [mvHydrated, ltHydrated] = await Promise.all([
+          hydrateSeriesCounts(supabase, (mv.data ?? []) as any[]),
+          hydrateSeriesCounts(supabase, (lt.data ?? []) as any[]),
+        ])
+        if (!cancelled) { setMostViewed(mvHydrated); setLatest(ltHydrated) }
       } catch (err: any) { console.error('Home page load error:', err) } finally { clearTimeout(safetyTimeout); if (!cancelled) setLoading(false) }
     }
     load()

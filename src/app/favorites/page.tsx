@@ -5,6 +5,7 @@ import { SeriesCard } from '@/components/SeriesCard'
 import { createAnonClient } from '@/lib/supabase/anon'
 import { useAuth } from '@/contexts/AuthContext'
 import { latestRating } from '@/lib/seriesRating'
+import { hydrateSeriesCounts } from '@/lib/hydrateSeriesCounts'
 
 export default function FavoritesPage() {
   const { user, loading: authLoading } = useAuth()
@@ -38,7 +39,14 @@ export default function FavoritesPage() {
           .order('created_at', { ascending: false }) as { data: any[] | null }
         clearTimeout(timeout)
         if (!cancelled) {
-          setFavorites(data ?? [])
+          // Hydrate real like/favorite counts on the nested series objects so
+          // the cards here match the series-page float menu and user profile.
+          const rows = data ?? []
+          const seriesList = rows.map(r => r.series).filter(Boolean)
+          const hydrated = await hydrateSeriesCounts(supabase, seriesList as any[])
+          const byId = new Map<string, any>(hydrated.map((s: any) => [s.id, s]))
+          const merged = rows.map(r => r.series ? { ...r, series: byId.get(r.series.id) ?? r.series } : r)
+          setFavorites(merged)
           setLoading(false)
         }
       } catch {

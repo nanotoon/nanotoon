@@ -9,6 +9,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { createAnonClient } from '@/lib/supabase/anon'
 import { createWriteClient, ensureFreshSession, getAuthUserId } from '@/lib/supabase/write'
 import { latestRating } from '@/lib/seriesRating'
+import { hydrateSeriesCounts } from '@/lib/hydrateSeriesCounts'
 
 export default function FollowingPage() {
   const { show } = useToast()
@@ -53,7 +54,10 @@ export default function FollowingPage() {
             .limit(20) as any
 
           if (!cancelled) {
-            setFeedSeries(seriesRes.data ?? [])
+            // Hydrate real like/favorite counts from the source-of-truth tables
+            // so cards here match the series-page float menu and user profile.
+            const hydrated = await hydrateSeriesCounts(anonDb, (seriesRes.data ?? []) as any[])
+            if (!cancelled) setFeedSeries(hydrated)
           }
         }
 
