@@ -11,6 +11,7 @@ import { createAnonClient } from '@/lib/supabase/anon'
 import { createWriteClient, getAuthUserId, ensureFreshSession } from '@/lib/supabase/write'
 import { latestRating } from '@/lib/seriesRating'
 import { TIME_WINDOWS, timeWindowSince, type TimeWindow } from '@/lib/timeWindow'
+import { readProfileLinks, normalizeUrl } from '@/lib/profileLinks'
 import Link from 'next/link'
 
 function fmtNum(n: number) { if (n >= 1e6) return (n/1e6).toFixed(1).replace(/\.0$/,'')+'M'; if (n >= 1e3) return (n/1e3).toFixed(1).replace(/\.0$/,'')+'K'; return n.toString() }
@@ -236,7 +237,33 @@ export default function PublicProfilePage() {
           )}
         </div>
       </div>
-      {profile.bio && <div className="bg-[#18181b] rounded-2xl p-4 mb-5"><h3 className="font-semibold mb-2 text-sm">About</h3><p className="text-[#d4d4d8] text-sm">{profile.bio}</p>{profile.links && <p className="text-[#c084fc] mt-2 text-xs">{profile.links}</p>}</div>}
+      {(() => {
+        // About + links card. Kept together because the old layout had them
+        // in one box; now we conditionally show each half depending on what
+        // the profile actually has.
+        const linkItems = readProfileLinks(profile)
+        const hasBio = !!profile.bio
+        const hasLinks = linkItems.length > 0
+        if (!hasBio && !hasLinks) return null
+        return (
+          <div className="bg-[#18181b] rounded-2xl p-4 mb-5">
+            {hasBio && <>
+              <h3 className="font-semibold mb-2 text-sm">About</h3>
+              <p className="text-[#d4d4d8] text-sm">{profile.bio}</p>
+            </>}
+            {hasLinks && (
+              <div className={hasBio ? 'mt-3' : ''}>
+                {linkItems.map((l, i) => (
+                  <a key={i} href={normalizeUrl(l.url)} target="_blank" rel="noopener noreferrer"
+                     className="text-[#c084fc] text-xs block truncate hover:text-[#a855f7] no-underline">
+                    {l.title || l.url}
+                  </a>
+                ))}
+              </div>
+            )}
+          </div>
+        )
+      })()}
       <div className="grid grid-cols-3 gap-3 mb-5">
         {[[fmtNum(tv),'Total Views'],[fmtNum(tl),'Total Likes'],[fmtNum(tf),'Total Favorites']].map(([n,l]) => (
           <div key={l} className="bg-[#18181b] rounded-2xl p-4 text-center"><div className="text-xl font-bold text-[#c084fc]">{n}</div><div className="text-[#71717a] text-xs mt-0.5">{l}</div></div>

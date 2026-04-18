@@ -35,7 +35,7 @@ export async function GET(request: Request) {
       if (user) {
         const { data: profile } = await supabase
           .from("profiles")
-          .select("id, is_banned")
+          .select("id, is_banned, deletion_status, deletion_scheduled_at")
           .eq("id", user.id)
           .maybeSingle();
 
@@ -56,6 +56,28 @@ export async function GET(request: Request) {
             return NextResponse.redirect(`https://${forwardedHost}${bannedTarget}`);
           } else {
             return NextResponse.redirect(`${origin}${bannedTarget}`);
+          }
+        }
+
+        // PENDING-DELETION CHECK — if the profile is in the 30-day grace
+        // window, DON'T hand them a normal session. We keep the session
+        // active (so they can call /api/account-delete from the recovery
+        // panel) but redirect them to the sign-in page with ?pending=1
+        // + uid + days so it renders the Recover / Delete-Now panel.
+        const pProfile = profile as any;
+        if (pProfile?.deletion_status === 'pending') {
+          const startMs = pProfile.deletion_scheduled_at ? new Date(pProfile.deletion_scheduled_at).getTime() : Date.now();
+          const elapsedDays = Math.floor((Date.now() - startMs) / (24 * 60 * 60 * 1000));
+          const daysLeft = Math.max(0, 30 - elapsedDays);
+          const forwardedHost = request.headers.get("x-forwarded-host");
+          const isLocalEnv = process.env.NODE_ENV === "development";
+          const pendingTarget = `/auth/signin?pending=1&uid=${encodeURIComponent(user.id)}&days=${daysLeft}`;
+          if (isLocalEnv) {
+            return NextResponse.redirect(`${origin}${pendingTarget}`);
+          } else if (forwardedHost) {
+            return NextResponse.redirect(`https://${forwardedHost}${pendingTarget}`);
+          } else {
+            return NextResponse.redirect(`${origin}${pendingTarget}`);
           }
         }
 

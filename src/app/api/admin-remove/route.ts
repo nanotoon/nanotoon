@@ -65,14 +65,61 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: true });
   }
 
-  // === PERMANENT DELETE ===
+  // === PERMANENT DELETE (30-day limbo) ===
+  // Per spec: clicking Delete Forever no longer hard-deletes. It schedules
+  // a 30-day limbo during which the series is fully hidden (even from
+  // admin everywhere except /admin/trash, where the Delete-Forever button
+  // turns into Recover). A background purge (/api/account-delete?action=purge,
+  // triggered opportunistically from admin pages) nukes rows past 30 days.
+  //
+  // 48-hour reset rule:
+  //   - Normally, re-clicking Delete Forever on a recovered series does NOT
+  //     reset the countdown — the prior schedule is preserved.
+  //   - BUT if more than 48 hours have passed since the last recover, it IS
+  //     treated as a fresh deletion and the countdown restarts at 30 days.
   if (action === "permanent-delete") {
-    await supabase.from("chapters").delete().eq("series_id", contentId);
-    await supabase.from("likes").delete().eq("series_id", contentId);
-    await supabase.from("favorites").delete().eq("series_id", contentId);
-    await supabase.from("comments").delete().eq("series_id", contentId);
-    const { error } = await supabase.from(table).delete().eq("id", contentId);
+    const { data: cur } = await supabase.from(table)
+      .select("permanent_delete_scheduled_at, permanent_delete_recovered_at")
+      .eq("id", contentId).maybeSingle() as any;
+
+    const now = Date.now();
+    const RESET_MS = 48 * 60 * 60 * 1000;
+    const prior = cur?.permanent_delete_scheduled_at ? new Date(cur.permanent_delete_scheduled_at).getTime() : null;
+    const recovered = cur?.permanent_delete_recovered_at ? new Date(cur.permanent_delete_recovered_at).getTime() : null;
+
+    // Decide which schedule timestamp to write.
+    //   - Never scheduled before → start a fresh 30 days (use now).
+    //   - Was scheduled, was recovered more than 48h ago → fresh 30 days.
+    //   - Was scheduled and (never recovered OR recovered within 48h) →
+    //     keep the original schedule (countdown continues).
+    let scheduledAt: string;
+    if (!prior) {
+      scheduledAt = new Date(now).toISOString();
+    } else if (recovered && (now - recovered) > RESET_MS) {
+      scheduledAt = new Date(now).toISOString();
+    } else {
+      scheduledAt = new Date(prior).toISOString();
+    }
+
+    const { error } = await supabase.from(table).update({
+      permanent_delete_scheduled_at: scheduledAt,
+      // Clear any prior recovered timestamp — it's no longer the latest state.
+      permanent_delete_recovered_at: null,
+    }).eq("id", contentId);
     if (error) return NextResponse.json({ error: "Delete failed: " + error.message }, { status: 500 });
+    return NextResponse.json({ ok: true, scheduledAt });
+  }
+
+  // === RECOVER FROM PERMANENT-DELETE LIMBO (different from restore) ===
+  // The Recover button that appears on an item in Delete-Forever limbo.
+  // Clears the scheduled timestamp and stamps recovered_at so the 48-hour
+  // reset rule can be evaluated if admin later re-presses Delete Forever.
+  if (action === "recover-from-permanent") {
+    const { error } = await supabase.from(table).update({
+      permanent_delete_scheduled_at: null,
+      permanent_delete_recovered_at: new Date().toISOString(),
+    }).eq("id", contentId);
+    if (error) return NextResponse.json({ error: "Recover failed: " + error.message }, { status: 500 });
     return NextResponse.json({ ok: true });
   }
 

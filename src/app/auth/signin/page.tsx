@@ -19,6 +19,13 @@ function SignInContent() {
   const [error, setError] = useState('')
   const [banned, setBanned] = useState(false)
   const [loading, setLoading] = useState(false)
+  // ─── Pending-deletion recovery panel state ────────────────────────────
+  // When signin succeeds but the profile has deletion_status = 'pending',
+  // we do NOT redirect. Instead we hold the session (so the user can act)
+  // and render a panel with Recover / Delete-Now options. Per spec,
+  // Delete-Now resets the 30-day timer rather than purging immediately.
+  const [pending, setPending] = useState<null | { daysLeft: number; uid: string }>(null)
+  const [pendingBusy, setPendingBusy] = useState(false)
   const router = useRouter()
   const searchParams = useSearchParams()
   const redirect = searchParams.get('redirect') || '/'
@@ -30,11 +37,19 @@ function SignInContent() {
   // AuthContext so we don't need a separate flag in state/localStorage.
   useEffect(() => {
     if (searchParams.get('banned') === '1') setBanned(true)
+    // Same mechanism for pending-deletion redirects from the OAuth callback:
+    // ?pending=1&uid=<id>&days=<n>. Presence of uid is the key.
+    const pUid = searchParams.get('uid')
+    const pDays = searchParams.get('days')
+    if (searchParams.get('pending') === '1' && pUid) {
+      setPending({ uid: pUid, daysLeft: parseInt(pDays || '30', 10) })
+    }
   }, [searchParams])
 
   async function handleEmailSignIn() {
     setError('')
     setBanned(false)
+    setPending(null)
     setLoading(true)
     const { data, error } = await supabase.auth.signInWithPassword({ email, password })
     if (error) {
@@ -42,16 +57,26 @@ function SignInContent() {
       setLoading(false)
       return
     }
-    // Sign-in succeeded — now check the banned flag BEFORE the router redirects.
-    // If banned, sign them back out and show the suspension message inline.
-    // We use the anon client (no JWT) so the read doesn't race with the session
-    // that's about to be revoked.
+    // Sign-in succeeded — now check flags BEFORE the router redirects.
+    // Use anon client (no JWT) so the read doesn't race with session writes.
     const uid = data.user?.id
     if (uid) {
-      const { data: prof } = await anonDb.from('profiles').select('is_banned').eq('id', uid).maybeSingle() as { data: any }
+      const { data: prof } = await anonDb.from('profiles')
+        .select('is_banned, deletion_status, deletion_scheduled_at')
+        .eq('id', uid).maybeSingle() as { data: any }
       if (prof?.is_banned) {
         try { await supabase.auth.signOut() } catch {}
         setBanned(true)
+        setLoading(false)
+        return
+      }
+      if (prof?.deletion_status === 'pending') {
+        // Keep the session live so the user can call /api/account-delete
+        // with their own JWT. Render the recovery panel.
+        const startMs = prof.deletion_scheduled_at ? new Date(prof.deletion_scheduled_at).getTime() : Date.now()
+        const elapsedDays = Math.floor((Date.now() - startMs) / (24 * 60 * 60 * 1000))
+        const daysLeft = Math.max(0, 30 - elapsedDays)
+        setPending({ uid, daysLeft })
         setLoading(false)
         return
       }
@@ -60,9 +85,41 @@ function SignInContent() {
     router.refresh()
   }
 
+  async function recoverAccount() {
+    setPendingBusy(true)
+    const res = await fetch('/api/account-delete', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'recover' }),
+    })
+    const json = await res.json()
+    setPendingBusy(false)
+    if (!res.ok) { setError(json.error || 'Recovery failed'); return }
+    // Session already active; just proceed to the app.
+    router.push(redirect)
+    router.refresh()
+  }
+
+  async function deleteNow() {
+    // Per spec: "if they press delete again the count down for total
+    // deletion is reset back to 30 days." So we re-stamp the schedule,
+    // then sign the user out.
+    setPendingBusy(true)
+    const res = await fetch('/api/account-delete', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'delete-now' }),
+    })
+    await res.json().catch(() => ({}))
+    try { await supabase.auth.signOut() } catch {}
+    setPendingBusy(false)
+    setPending(null)
+    // Land back on home.
+    window.location.replace('/')
+  }
+
   async function handleOAuth(provider: 'google' | 'discord') {
     setError('')
     setBanned(false)
+    setPending(null)
     // OAuth goes through /auth/callback which returns us here. AuthContext
     // will detect the banned flag after the session lands and redirect back
     // to /auth/signin?banned=1 — no extra check needed on this side.
@@ -76,6 +133,34 @@ function SignInContent() {
   return (
     <div className="bg-[#18181b] rounded-2xl w-full max-w-[360px] border border-[#27272a] p-6">
       <h2 className="font-bold text-lg mb-5">Sign In to NANOTOON</h2>
+
+      {/* ─── Pending-deletion recovery panel ──────────────────────────
+         Shown when a signed-in user's profile is flagged pending. Takes
+         over the whole card so the user has to consciously pick one of
+         the two actions before using the site. */}
+      {pending ? (
+        <>
+          <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 mb-3">
+            <div className="flex items-center gap-1.5 mb-1.5">
+              <span className="text-base">⏳</span>
+              <span className="text-[#fbbf24] text-xs font-semibold">Account pending deletion</span>
+            </div>
+            <p className="text-[#fde68a] text-[0.72rem] leading-relaxed">
+              This account is scheduled to be permanently deleted in <strong>{pending.daysLeft} day{pending.daysLeft === 1 ? '' : 's'}</strong>. Would you like to recover it? After the countdown you won&apos;t be able to recover your account or series.
+            </p>
+          </div>
+          <div className="flex flex-col gap-2">
+            <button onClick={recoverAccount} disabled={pendingBusy}
+              className="w-full p-2.5 bg-[#7c3aed] text-white rounded-xl font-medium text-sm border-none cursor-pointer hover:bg-[#6d28d9] disabled:opacity-50">
+              {pendingBusy ? 'Please wait…' : 'Recover My Account'}
+            </button>
+            <button onClick={deleteNow} disabled={pendingBusy}
+              className="w-full p-2.5 border border-[#ef4444] text-[#f87171] bg-transparent rounded-xl font-medium text-sm cursor-pointer hover:bg-red-500/10 disabled:opacity-50">
+              Keep deleting (resets timer to 30 days)
+            </button>
+          </div>
+        </>
+      ) : (<>
 
       {banned && (
         <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-3 mb-3">
@@ -150,6 +235,7 @@ function SignInContent() {
           Register
         </Link>
       </p>
+      </>)}
     </div>
   )
 }

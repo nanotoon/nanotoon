@@ -26,6 +26,27 @@ export default function RegisterPage() {
 
     setLoading(true)
 
+    // Pending-deletion check. Calls GET /api/account-delete?email=... which
+    // answers { pending: boolean, daysLeft?: number }. If pending, we block
+    // the signup and tell the user how long until the email is free again.
+    // The server returns { pending: false } if the service role env var is
+    // missing, so this fails open (doesn't block legitimate signups in
+    // broken envs).
+    try {
+      const pRes = await fetch(`/api/account-delete?email=${encodeURIComponent(email.trim())}`)
+      if (pRes.ok) {
+        const pj = await pRes.json()
+        if (pj?.pending) {
+          const n = Math.max(0, Number(pj.daysLeft) || 0)
+          setError(
+            `An account with that email is currently in the process of deletion. It takes 30 days to be fully deleted. You can register with this email again in ${n} day${n === 1 ? '' : 's'}.`
+          )
+          setLoading(false)
+          return
+        }
+      }
+    } catch { /* fail open — don't block signup on a network blip */ }
+
     const { data, error: signUpError } = await supabase.auth.signUp({
       email,
       password,

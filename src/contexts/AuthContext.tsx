@@ -42,6 +42,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
         return;
       }
+      // PENDING-DELETION CHECK — if the profile is in the 30-day grace
+      // window, redirect the user to the sign-in page with the recovery
+      // params but DO NOT sign them out. The recovery panel there calls
+      // /api/account-delete with the user's own JWT, so the session must
+      // stay alive. Skip the redirect when the user is already on the
+      // sign-in page (prevents loops).
+      if (data?.deletion_status === 'pending') {
+        if (typeof window !== "undefined") {
+          const startMs = data.deletion_scheduled_at ? new Date(data.deletion_scheduled_at).getTime() : Date.now();
+          const elapsedDays = Math.floor((Date.now() - startMs) / (24 * 60 * 60 * 1000));
+          const daysLeft = Math.max(0, 30 - elapsedDays);
+          const onSignIn = window.location.pathname === '/auth/signin';
+          const isPendingParam = new URLSearchParams(window.location.search).get('pending') === '1';
+          if (!onSignIn || !isPendingParam) {
+            window.location.replace(`/auth/signin?pending=1&uid=${encodeURIComponent(uid)}&days=${daysLeft}`);
+          }
+        }
+        // Also clear the profile so nothing in the UI assumes a normal user.
+        setProfile(null);
+        return;
+      }
       setProfile((data as Profile) ?? null);
     } catch { setProfile(null); }
   }, [anonDb, supabase]);
@@ -78,6 +99,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             avatar_url: meta.avatar_url || null,
             bio: null,
             links: null,
+            links_json: null,
             created_at: null,
           } as Profile);
           await fetchProfile(session.user.id);
@@ -106,6 +128,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           avatar_url: meta.avatar_url || null,
           bio: null,
           links: null,
+          links_json: null,
           created_at: null,
         } as Profile));
         await fetchProfile(u.id);
