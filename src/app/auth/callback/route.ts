@@ -35,9 +35,29 @@ export async function GET(request: Request) {
       if (user) {
         const { data: profile } = await supabase
           .from("profiles")
-          .select("id")
+          .select("id, is_banned")
           .eq("id", user.id)
           .maybeSingle();
+
+        // BANNED CHECK — applies to ALL login paths that come through this
+        // callback (Google OAuth, Discord OAuth, email-confirmation links).
+        // If the profile is flagged banned, sign them out on the server
+        // before we hand them back a session cookie and bounce them to the
+        // sign-in page. The sign-in page shows the suspension message when
+        // it sees ?banned=1 in the query string.
+        if ((profile as any)?.is_banned) {
+          try { await supabase.auth.signOut(); } catch {}
+          const forwardedHost = request.headers.get("x-forwarded-host");
+          const isLocalEnv = process.env.NODE_ENV === "development";
+          const bannedTarget = "/auth/signin?banned=1";
+          if (isLocalEnv) {
+            return NextResponse.redirect(`${origin}${bannedTarget}`);
+          } else if (forwardedHost) {
+            return NextResponse.redirect(`https://${forwardedHost}${bannedTarget}`);
+          } else {
+            return NextResponse.redirect(`${origin}${bannedTarget}`);
+          }
+        }
 
         if (!profile) {
           // Create a default profile for new users (OAuth or email-confirmed)
