@@ -6,12 +6,14 @@ import { createAnonClient } from '@/lib/supabase/anon'
 import { useAuth } from '@/contexts/AuthContext'
 import { latestRating } from '@/lib/seriesRating'
 import { hydrateSeriesCounts } from '@/lib/hydrateSeriesCounts'
+import { TIME_WINDOWS, timeWindowSince, type TimeWindow } from '@/lib/timeWindow'
 
 export default function FavoritesPage() {
   const { user, loading: authLoading } = useAuth()
   const supabase = useMemo(() => createAnonClient(), [])
   const [favorites, setFavorites] = useState<any[]>([])
   const [formatFilter, setFormatFilter] = useState('All')
+  const [timeFilter, setTimeFilter] = useState<TimeWindow>('All Time')
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -66,12 +68,24 @@ export default function FavoritesPage() {
     <div className="px-4 md:px-8 py-6">
       <h2 className="text-base font-semibold text-[#c084fc] mb-4">Your Favorites</h2>
       {user && !loading && favorites.length > 0 && (
-        <div className="flex items-center gap-1.5 mb-5 flex-wrap">
-          <span className="text-[0.75rem] text-[#71717a] shrink-0">Show:</span>
-          {['All', 'Series', 'One Shot'].map(f => (
-            <button key={f} onClick={() => setFormatFilter(f)}
-              className={`px-3 py-1 rounded-full text-[0.73rem] cursor-pointer border transition-all ${formatFilter === f ? 'bg-[#7c3aed] border-[#7c3aed] text-white' : 'bg-transparent border-[#3f3f46] text-[#71717a] hover:border-[#a855f7] hover:text-[#c084fc]'}`}>{f}</button>
-          ))}
+        // Read-tab-style header: format pills on the left, time pills on the
+        // right. `justify-between` + `flex-wrap` matches the Most Viewed row
+        // on the home page so PC and mobile placement stay consistent —
+        // pills sit side-by-side on desktop and stack on narrow screens.
+        <div className="flex items-center justify-between mb-5 flex-wrap gap-2">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-[0.75rem] text-[#71717a] shrink-0">Show:</span>
+            {['All', 'Series', 'One Shot'].map(f => (
+              <button key={f} onClick={() => setFormatFilter(f)}
+                className={`px-3 py-1 rounded-full text-[0.73rem] cursor-pointer border transition-all ${formatFilter === f ? 'bg-[#7c3aed] border-[#7c3aed] text-white' : 'bg-transparent border-[#3f3f46] text-[#71717a] hover:border-[#a855f7] hover:text-[#c084fc]'}`}>{f}</button>
+            ))}
+          </div>
+          <div className="flex gap-1.5 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
+            {TIME_WINDOWS.map(t => (
+              <button key={t} onClick={() => setTimeFilter(t)}
+                className={`px-3 py-1 rounded-full text-[0.73rem] cursor-pointer border whitespace-nowrap transition-all ${timeFilter === t ? 'bg-[#7c3aed] border-[#7c3aed] text-white' : 'bg-transparent border-[#3f3f46] text-[#71717a] hover:border-[#a855f7] hover:text-[#c084fc]'}`}>{t}</button>
+            ))}
+          </div>
         </div>
       )}
       {loading ? (
@@ -85,7 +99,19 @@ export default function FavoritesPage() {
         </p>
       ) : (
         <div className="grid gap-2.5 md:gap-4 grid-cols-3 md:grid-cols-9">
-          {favorites.map((f, i) => f.series && !f.series.is_removed && (formatFilter === 'All' || f.series.format === formatFilter) && (
+          {(() => {
+            // Time filter on this tab is "when I favorited it" — the
+            // favorites row's created_at — not the series' updated_at.
+            // Users browsing their favorites by time are asking "what
+            // did I add recently," not "which of my favorites got
+            // updated recently."
+            const since = timeWindowSince(timeFilter)
+            return favorites.filter(f =>
+              f.series && !f.series.is_removed
+              && (formatFilter === 'All' || f.series.format === formatFilter)
+              && (!since || (f.created_at && f.created_at >= since))
+            )
+          })().map((f, i) => (
             <SeriesCard
               key={f.series.id}
               title={f.series.title}

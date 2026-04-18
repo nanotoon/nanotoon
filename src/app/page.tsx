@@ -7,6 +7,7 @@ import { useToast } from '@/components/Toast'
 import { createAnonClient } from '@/lib/supabase/anon'
 import { latestRating } from '@/lib/seriesRating'
 import { hydrateSeriesCounts } from '@/lib/hydrateSeriesCounts'
+import { TIME_WINDOWS, timeWindowSince, type TimeWindow } from '@/lib/timeWindow'
 
 export default function HomePage() {
   const { show } = useToast()
@@ -14,7 +15,7 @@ export default function HomePage() {
   const [isMobile, setIsMobile] = useState(false)
   const [mounted, setMounted] = useState(false)
   const [formatFilter, setFormatFilter] = useState('All')
-  const [mvTime, setMvTime] = useState('Today')
+  const [mvTime, setMvTime] = useState<TimeWindow>('All Time')
   const [mostViewed, setMostViewed] = useState<any[]>([])
   const [latest, setLatest] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -33,6 +34,13 @@ export default function HomePage() {
         setLoading(true)
         let mvQ = supabase.from('series').select('*, profiles!series_author_id_fkey(display_name, handle, avatar_url), chapters(rating, chapter_number)').neq('is_removed', true).order('total_views', { ascending: false }).limit(9)
         if (formatFilter !== 'All') mvQ = mvQ.eq('format', formatFilter)
+        // FIX: the Today/Week/Month/Year/All Time pills used to only flip the
+        // button styles — mvTime was never fed into the query. Now we filter
+        // by updated_at (the closest proxy we have; there's no view-event
+        // log to compute true "views in last N days"), which gives the
+        // intuitive "popular recently" reading.
+        const mvSince = timeWindowSince(mvTime)
+        if (mvSince) mvQ = mvQ.gte('updated_at', mvSince)
         let latQ = supabase.from('series').select('*, profiles!series_author_id_fkey(display_name, handle, avatar_url), chapters(rating, chapter_number)').neq('is_removed', true).order('updated_at', { ascending: false }).limit(latestLimit)
         if (formatFilter !== 'All') latQ = latQ.eq('format', formatFilter)
         const [mv, lt] = await Promise.all([mvQ, latQ])
@@ -50,9 +58,8 @@ export default function HomePage() {
     }
     load()
     return () => { cancelled = true; clearTimeout(safetyTimeout) }
-  }, [formatFilter, latestLimit, supabase])
+  }, [formatFilter, latestLimit, mvTime, supabase])
 
-  const timePills = ['Today', 'Week', 'Month', 'Year', 'All Time']
   if (!mounted) return <div className="min-h-screen" />
 
   return (
@@ -71,7 +78,7 @@ export default function HomePage() {
         <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
           <Link href="/browse?mode=mostviewed" className="text-base font-semibold text-[#c084fc] no-underline flex items-center gap-1 hover:text-[#a855f7]">Most Viewed <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></Link>
           <div className="flex gap-1.5 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
-            {timePills.map(t => (<button key={t} onClick={() => { setMvTime(t); show(`Showing: ${t}`) }} className={`px-3 py-1 rounded-full text-[0.73rem] cursor-pointer border whitespace-nowrap transition-all ${mvTime === t ? 'bg-[#7c3aed] border-[#7c3aed] text-white' : 'bg-transparent border-[#3f3f46] text-[#71717a] hover:border-[#a855f7] hover:text-[#c084fc]'}`}>{t}</button>))}
+            {TIME_WINDOWS.map(t => (<button key={t} onClick={() => { setMvTime(t); show(`Showing: ${t}`) }} className={`px-3 py-1 rounded-full text-[0.73rem] cursor-pointer border whitespace-nowrap transition-all ${mvTime === t ? 'bg-[#7c3aed] border-[#7c3aed] text-white' : 'bg-transparent border-[#3f3f46] text-[#71717a] hover:border-[#a855f7] hover:text-[#c084fc]'}`}>{t}</button>))}
           </div>
         </div>
         {loading ? <LoadingSpinner /> : mostViewed.length === 0 ? <p className="text-center py-12 text-[#52525b] text-sm">No series uploaded yet. Be the first!</p> : (

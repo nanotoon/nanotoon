@@ -10,6 +10,7 @@ import { createAnonClient } from '@/lib/supabase/anon'
 import { createWriteClient, ensureFreshSession, getAuthUserId } from '@/lib/supabase/write'
 import { latestRating } from '@/lib/seriesRating'
 import { hydrateSeriesCounts } from '@/lib/hydrateSeriesCounts'
+import { TIME_WINDOWS, timeWindowSince, type TimeWindow } from '@/lib/timeWindow'
 
 export default function FollowingPage() {
   const { show } = useToast()
@@ -18,6 +19,7 @@ export default function FollowingPage() {
   const [following, setFollowing] = useState<any[]>([])
   const [feedSeries, setFeedSeries] = useState<any[]>([])
   const [formatFilter, setFormatFilter] = useState('All')
+  const [timeFilter, setTimeFilter] = useState<TimeWindow>('All Time')
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -125,15 +127,33 @@ export default function FollowingPage() {
 
         {/* ─── Series from followed users ─────────────────── */}
         {feedSeries.length > 0 && (<>
-          <div className="flex items-center gap-1.5 mb-3 flex-wrap">
-            <h3 className="font-semibold text-sm mr-1">Series from Followed</h3>
-            {['All', 'Series', 'One Shot'].map(f => (
-              <button key={f} onClick={() => setFormatFilter(f)}
-                className={`px-3 py-1 rounded-full text-[0.73rem] cursor-pointer border transition-all ${formatFilter === f ? 'bg-[#7c3aed] border-[#7c3aed] text-white' : 'bg-transparent border-[#3f3f46] text-[#71717a] hover:border-[#a855f7] hover:text-[#c084fc]'}`}>{f}</button>
-            ))}
+          <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <h3 className="font-semibold text-sm mr-1">Series from Followed</h3>
+              {['All', 'Series', 'One Shot'].map(f => (
+                <button key={f} onClick={() => setFormatFilter(f)}
+                  className={`px-3 py-1 rounded-full text-[0.73rem] cursor-pointer border transition-all ${formatFilter === f ? 'bg-[#7c3aed] border-[#7c3aed] text-white' : 'bg-transparent border-[#3f3f46] text-[#71717a] hover:border-[#a855f7] hover:text-[#c084fc]'}`}>{f}</button>
+              ))}
+            </div>
+            <div className="flex gap-1.5 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
+              {TIME_WINDOWS.map(t => (
+                <button key={t} onClick={() => setTimeFilter(t)}
+                  className={`px-3 py-1 rounded-full text-[0.73rem] cursor-pointer border whitespace-nowrap transition-all ${timeFilter === t ? 'bg-[#7c3aed] border-[#7c3aed] text-white' : 'bg-transparent border-[#3f3f46] text-[#71717a] hover:border-[#a855f7] hover:text-[#c084fc]'}`}>{t}</button>
+              ))}
+            </div>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-            {feedSeries.filter(s => formatFilter === 'All' || s.format === formatFilter).map((s, i) => (
+            {(() => {
+              // Feed filter: "what have my follows been working on lately" —
+              // so filter by the series' updated_at (when the latest chapter
+              // was added / series was edited), same column used as the order
+              // in the fetch. 'All Time' keeps the full feed.
+              const since = timeWindowSince(timeFilter)
+              return feedSeries.filter(s =>
+                (formatFilter === 'All' || s.format === formatFilter)
+                && (!since || (s.updated_at && s.updated_at >= since))
+              )
+            })().map((s, i) => (
               <SeriesCard
                 key={s.id}
                 title={s.title}

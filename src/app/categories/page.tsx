@@ -7,12 +7,14 @@ import { useToast } from '@/components/Toast'
 import { createAnonClient } from '@/lib/supabase/anon'
 import { latestRating } from '@/lib/seriesRating'
 import { hydrateSeriesCounts } from '@/lib/hydrateSeriesCounts'
+import { TIME_WINDOWS, timeWindowSince, type TimeWindow } from '@/lib/timeWindow'
 
 export default function CategoriesPage() {
   const { show } = useToast()
   const supabase = useMemo(() => createAnonClient(), [])
   const [selectedCat, setSelectedCat] = useState<string | null>(null)
   const [formatFilter, setFormatFilter] = useState('All')
+  const [mvTime, setMvTime] = useState<TimeWindow>('All Time')
   const [series, setSeries] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [limit, setLimit] = useState(45)
@@ -62,7 +64,12 @@ export default function CategoriesPage() {
   }
 
   const filteredSeries = formatFilter === 'All' ? series : series.filter(s => s.format === formatFilter)
-  const mvSeries = [...filteredSeries].sort((a, b) => (b.total_views ?? 0) - (a.total_views ?? 0)).slice(0, 9)
+  // FIX: time pill (Today/Week/Month/Year/All Time) narrows ONLY the Most
+  // Viewed slice, same placement and semantics as the Read-tab Most Viewed
+  // pills. Latest Updates below stays unfiltered, matching the home page.
+  const mvSince = timeWindowSince(mvTime)
+  const mvPool = mvSince ? filteredSeries.filter(s => s.updated_at && s.updated_at >= mvSince) : filteredSeries
+  const mvSeries = [...mvPool].sort((a, b) => (b.total_views ?? 0) - (a.total_views ?? 0)).slice(0, 9)
 
   return (
     <div className="px-4 md:px-8 py-6">
@@ -86,10 +93,17 @@ export default function CategoriesPage() {
       </div>
 
       <div ref={resultsRef}>
-        <div className="flex items-center gap-2 mb-3 flex-wrap">
-          <h2 className="text-base font-semibold text-[#c084fc]">Most Viewed</h2>
-          <span className="bg-[#27272a] text-[#c084fc] rounded-full px-2.5 py-0.5 text-[0.71rem] font-medium">{selectedCat || 'All'}</span>
-          {selectedCat && <button onClick={() => { setSelectedCat(null); setLimit(45) }} className="bg-transparent border border-[#3f3f46] rounded-full px-2.5 py-0.5 text-[0.71rem] text-[#71717a] cursor-pointer hover:border-[#a855f7]">✕ Clear</button>}
+        <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h2 className="text-base font-semibold text-[#c084fc]">Most Viewed</h2>
+            <span className="bg-[#27272a] text-[#c084fc] rounded-full px-2.5 py-0.5 text-[0.71rem] font-medium">{selectedCat || 'All'}</span>
+            {selectedCat && <button onClick={() => { setSelectedCat(null); setLimit(45) }} className="bg-transparent border border-[#3f3f46] rounded-full px-2.5 py-0.5 text-[0.71rem] text-[#71717a] cursor-pointer hover:border-[#a855f7]">✕ Clear</button>}
+          </div>
+          <div className="flex gap-1.5 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
+            {TIME_WINDOWS.map(t => (
+              <button key={t} onClick={() => { setMvTime(t); show(`Showing: ${t}`) }} className={`px-3 py-1 rounded-full text-[0.73rem] cursor-pointer border whitespace-nowrap transition-all ${mvTime === t ? 'bg-[#7c3aed] border-[#7c3aed] text-white' : 'bg-transparent border-[#3f3f46] text-[#71717a] hover:border-[#a855f7] hover:text-[#c084fc]'}`}>{t}</button>
+            ))}
+          </div>
         </div>
         {loading && mvSeries.length === 0 ? <LoadingSpinner /> : mvSeries.length === 0 ? (
           <p className="text-center py-8 text-[#71717a] text-sm mb-8">No series yet.</p>
