@@ -13,7 +13,7 @@ export default function EditSeriesPage() {
   const params = useParams()
   const router = useRouter()
   const { show } = useToast()
-  const { user } = useAuth()
+  const { user, profile } = useAuth()
   const slug = params.slug as string
   const anonDb = useMemo(() => createAnonClient(), [])
   const thumbRef = useRef<HTMLInputElement>(null)
@@ -156,7 +156,9 @@ export default function EditSeriesPage() {
       setSeries((s: any) => ({ ...s, title, description: desc, format, genres: Array.from(genres), thumbnail_url: thumbnailUrl }))
       setNewThumbFile(null)
       show('Changes saved!')
-      setTimeout(() => window.location.reload(), 600)
+      // Kick to the author's profile so their latest edit appears up top.
+      const target = profile?.handle ? `/user/${profile.handle}` : '/profile'
+      setTimeout(() => { window.location.href = target }, 600)
     }
     setSaving(false)
   }
@@ -362,7 +364,9 @@ export default function EditSeriesPage() {
     setNewChTitle(''); setNewChNumber(newChNumber + 1); setNewChFiles([]); setNewChRating('General')
     setShowAddChapter(false); setAddingChapter(false)
     show('Chapter added!')
-    setTimeout(() => window.location.reload(), 600)
+    // Kick to the author's profile so the newly-updated series appears at the top.
+    const target = profile?.handle ? `/user/${profile.handle}` : '/profile'
+    setTimeout(() => { window.location.href = target }, 600)
   }
 
   if (loading) return <div className="min-h-screen"><LoadingSpinner /></div>

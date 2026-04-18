@@ -16,7 +16,14 @@ export const metadata: Metadata = {
     template: '%s · NANOTOON',
   },
   description: SITE_DESCRIPTION,
-  keywords: ['AI comics', 'AI manga', 'AI webtoon', 'AI manhwa', 'webtoon platform', 'comic reader', 'digital comics', 'NANOTOON'],
+  keywords: [
+    // User-specified targets
+    'AI webtoon', 'AI manga', 'AI comic', 'AI manhwa', 'AI manhua',
+    'webtoon', 'manga', 'comic', 'manhwa', 'manhua',
+    'aicomic', 'aiwebtoon', 'AI story', 'AI', 'artificial intelligence',
+    // Branded
+    'NANOTOON', 'nanotoon.io',
+  ],
   applicationName: SITE_NAME,
   authors: [{ name: 'NANOTOON' }],
   creator: SITE_NAME,

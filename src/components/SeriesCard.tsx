@@ -4,6 +4,10 @@ import { GRADIENTS } from '@/data/mock'
 // Shared across the app — keep identical to the float-menu tooltip and FAQ.
 export const MATURE_FAQ_TEXT = "Violence & Dark Themes: We support high-stakes storytelling. Intense graphic violence and realistic blood are permitted in Mature-tagged chapters. However, content that exists solely to depict sadistic torture without narrative purpose, or content that mimics real-world 'snuff,' is prohibited to comply with safety regulations.\n\nNudity & Mature Content — Non-sexual nudity is allowed, provided that genitalia are fully obscured or censored. Pornographic content is strictly prohibited.\n\nFor more information about this, explore the FAQ page."
 
+// Shown when hovering the ONE SHOT badge. Kept short because the tooltip
+// sits over a thumbnail and we don't want to cover too much of the art.
+export const ONESHOT_TOOLTIP = "A complete, self-contained story told in a single chapter — from a multi-page short down to a one-page comic. If the creator adds more chapters later, it automatically turns into a Series."
+
 function formatNum(n: number | null | undefined): string {
   if (!n) return '0'
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1).replace(/\.0$/, '') + 'M'
@@ -39,7 +43,15 @@ export function SeriesCard({ title, slug, author, thumbnailUrl, latestChapter, r
             </span>
           </span>
         )}
-        {format === 'One Shot' && <div className="absolute bottom-1.5 left-1.5 bg-black/70 text-[0.59rem] px-1.5 py-0.5 rounded text-[#a1a1aa]">ONE SHOT</div>}
+        {format === 'One Shot' && (
+          <span className="absolute bottom-1.5 left-1.5 group/oneshot z-10">
+            <span className="block bg-black/70 text-[0.59rem] px-1.5 py-0.5 rounded text-[#a1a1aa]">ONE SHOT</span>
+            {/* Desktop-only hover tooltip — opens UPWARD (bottom-full mb-1) because the badge lives at the bottom of the card. Hidden on mobile so it doesn't fight the tap-to-navigate behaviour. */}
+            <span className="hidden md:group-hover/oneshot:block absolute left-0 bottom-full mb-1 w-[240px] bg-[#27272a] border border-[#3f3f46] rounded-xl p-3 text-[0.68rem] text-[#a1a1aa] leading-relaxed shadow-2xl z-[100] normal-case font-normal">
+              {ONESHOT_TOOLTIP}
+            </span>
+          </span>
+        )}
         {latestChapter > 0 && <div className="absolute top-1.5 right-1.5 bg-black/75 text-[0.6rem] px-1.5 py-0.5 rounded text-[#e4e4e7]">Ch. {latestChapter}</div>}
       </div>
       <div className="mt-1.5">

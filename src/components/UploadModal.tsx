@@ -73,7 +73,7 @@ function OneShotTip({ mobile }: { mobile: boolean }) {
 }
 
 export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast: (m: string) => void }) {
-  const { user } = useAuth()
+  const { user, profile } = useAuth()
   const anonDb = useMemo(() => createAnonClient(), [])
   const [step, setStep] = useState<'choose' | 'existing' | 'form'>('choose')
   const [mode, setMode] = useState<'new' | 'existing'>('new')
@@ -253,7 +253,14 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
       }
     } catch { /* silently ignore — don't block publish on notification failure */ }
 
-    onToast('Chapter published! 🎉'); onClose(); setTimeout(() => window.location.reload(), 600)
+    onToast('Chapter published! 🎉'); onClose();
+    // Redirect to the author's public profile page so the fresh upload
+    // appears at the top of their Series list. Fallback to /profile if
+    // the handle somehow isn't hydrated yet (shouldn't happen with the
+    // optimistic AuthContext seed, but harmless insurance).
+    const handle = profile?.handle
+    const target = handle ? `/user/${handle}` : '/profile'
+    setTimeout(() => { window.location.href = target }, 600)
   }
 
   return (
