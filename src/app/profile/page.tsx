@@ -50,16 +50,31 @@ export default function ProfilePage() {
 
       // FIX: count likes/favorites from source-of-truth tables so the totals
       // reflect actual engagement even when series.total_likes/total_favorites
-      // are stale (they only update for the admin under current RLS).
+      // are stale (they only update for the admin under current RLS). Hydrate
+      // each series with its per-series count so the SeriesCard tiles below
+      // match the aggregate — same source the series-page float menu uses.
       const seriesIds = seriesList.map((x: any) => x.id)
       if (seriesIds.length > 0) {
-        const [likesRes, favsRes] = await Promise.all([
-          anonDb.from('likes').select('*', { count: 'exact', head: true }).in('series_id', seriesIds),
-          anonDb.from('favorites').select('*', { count: 'exact', head: true }).in('series_id', seriesIds),
+        const [likesRows, favsRows] = await Promise.all([
+          anonDb.from('likes').select('series_id').in('series_id', seriesIds),
+          anonDb.from('favorites').select('series_id').in('series_id', seriesIds),
         ]) as any[]
+        const likeCounts = new Map<string, number>()
+        const favCounts = new Map<string, number>()
+        for (const r of (likesRows.data ?? []) as any[]) likeCounts.set(r.series_id, (likeCounts.get(r.series_id) ?? 0) + 1)
+        for (const r of (favsRows.data ?? []) as any[]) favCounts.set(r.series_id, (favCounts.get(r.series_id) ?? 0) + 1)
+        const hydrated = seriesList.map((s: any) => ({
+          ...s,
+          total_likes: likeCounts.get(s.id) ?? 0,
+          total_favorites: favCounts.get(s.id) ?? 0,
+        }))
+        let sumL = 0, sumF = 0
+        for (const v of likeCounts.values()) sumL += v
+        for (const v of favCounts.values()) sumF += v
         if (!c) {
-          setRealTotalLikes(likesRes.count ?? 0)
-          setRealTotalFavorites(favsRes.count ?? 0)
+          setMySeries(hydrated)
+          setRealTotalLikes(sumL)
+          setRealTotalFavorites(sumF)
         }
       }
     }).catch(() => { if (!c) setLoading(false) })

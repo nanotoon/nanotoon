@@ -75,15 +75,36 @@ export default function PublicProfilePage() {
 
         // Compute REAL totals from the likes/favorites tables. This is what
         // profile users actually expect to see.
+        // FIX: Previously only the aggregate totals used real counts, but the
+        // per-series SeriesCard below still received s.total_likes /
+        // s.total_favorites from the stale denormalized series columns — which
+        // only reflect admin + author likes under current RLS. So the tiles kept
+        // reading "2" even though the aggregate read the correct "3". We now
+        // pull the raw rows, bucket them per series_id, and hydrate each series
+        // with its true count so the cards and the aggregate both match the
+        // series-page float menu.
         const seriesIds = seriesList.map((x: any) => x.id)
         if (seriesIds.length > 0) {
-          const [likesRes, favsRes] = await Promise.all([
-            anonDb.from('likes').select('*', { count: 'exact', head: true }).in('series_id', seriesIds),
-            anonDb.from('favorites').select('*', { count: 'exact', head: true }).in('series_id', seriesIds),
+          const [likesRows, favsRows] = await Promise.all([
+            anonDb.from('likes').select('series_id').in('series_id', seriesIds),
+            anonDb.from('favorites').select('series_id').in('series_id', seriesIds),
           ]) as any[]
+          const likeCounts = new Map<string, number>()
+          const favCounts = new Map<string, number>()
+          for (const r of (likesRows.data ?? []) as any[]) likeCounts.set(r.series_id, (likeCounts.get(r.series_id) ?? 0) + 1)
+          for (const r of (favsRows.data ?? []) as any[]) favCounts.set(r.series_id, (favCounts.get(r.series_id) ?? 0) + 1)
+          const hydrated = seriesList.map((s: any) => ({
+            ...s,
+            total_likes: likeCounts.get(s.id) ?? 0,
+            total_favorites: favCounts.get(s.id) ?? 0,
+          }))
+          let sumL = 0, sumF = 0
+          for (const v of likeCounts.values()) sumL += v
+          for (const v of favCounts.values()) sumF += v
           if (!c) {
-            setRealTotalLikes(likesRes.count ?? 0)
-            setRealTotalFavorites(favsRes.count ?? 0)
+            setTheirSeries(hydrated)
+            setRealTotalLikes(sumL)
+            setRealTotalFavorites(sumF)
           }
         } else {
           if (!c) { setRealTotalLikes(0); setRealTotalFavorites(0) }
