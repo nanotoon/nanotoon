@@ -81,16 +81,11 @@ export async function POST(request: NextRequest) {
     }).eq("id", userId);
     if (error) return NextResponse.json({ error: "Ban failed: " + error.message }, { status: 500 });
 
-    // Notify the banned user. They'll see this the next time they sign in
-    // (or, if they're signed in right now, it will arrive next time the
-    // notifications page loads — though AuthContext will force-sign-them-out
-    // first, which is the intended behaviour).
-    await supabase.from("notifications").insert({
-      user_id: userId,
-      actor_id: jwt.sub,
-      type: "ban",
-      message: "Your account has been suspended for repeated or severe violations of NANOTOON's community guidelines. You are no longer able to sign in, post content, comment, or otherwise interact with the platform. If you believe this is a mistake, please contact nanotooncontact@gmail.com to appeal.",
-    }).select().maybeSingle();
+    // Note: no ban notification is inserted. The banned user is informed via
+    // the sign-in screen itself — AuthContext force-logs-them-out on their
+    // next session read, and /auth/signin displays the suspension message
+    // the next time they try to sign in. This is cleaner than a notification
+    // they would never see anyway (because they can't stay signed in).
 
     return NextResponse.json({ ok: true });
   }

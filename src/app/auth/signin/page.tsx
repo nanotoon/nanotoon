@@ -1,27 +1,60 @@
 'use client'
-import { useState, Suspense } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { createAnonClient } from '@/lib/supabase/anon'
+
+// The exact suspension message shown to a banned user on the sign-in screen.
+// Kept here so both the "just tried to sign in and got bounced" path and the
+// "was signed in, then banned, got redirected here" path use the same wording.
+const BAN_MESSAGE =
+  "Your account has been suspended for repeated or severe violations of NANOTOON's community guidelines. " +
+  "You are no longer able to sign in, post content, comment, or otherwise interact with the platform. " +
+  "If you believe this is a mistake, please contact nanotooncontact@gmail.com to appeal."
 
 function SignInContent() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
+  const [banned, setBanned] = useState(false)
   const [loading, setLoading] = useState(false)
   const router = useRouter()
   const searchParams = useSearchParams()
   const redirect = searchParams.get('redirect') || '/'
   const supabase = createClient()
+  const anonDb = createAnonClient()
+
+  // If AuthContext just force-signed-out a banned user and bounced them here,
+  // show the suspension message immediately. The ?banned=1 marker is set by
+  // AuthContext so we don't need a separate flag in state/localStorage.
+  useEffect(() => {
+    if (searchParams.get('banned') === '1') setBanned(true)
+  }, [searchParams])
 
   async function handleEmailSignIn() {
     setError('')
+    setBanned(false)
     setLoading(true)
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
     if (error) {
       setError(error.message)
       setLoading(false)
       return
+    }
+    // Sign-in succeeded — now check the banned flag BEFORE the router redirects.
+    // If banned, sign them back out and show the suspension message inline.
+    // We use the anon client (no JWT) so the read doesn't race with the session
+    // that's about to be revoked.
+    const uid = data.user?.id
+    if (uid) {
+      const { data: prof } = await anonDb.from('profiles').select('is_banned').eq('id', uid).maybeSingle() as { data: any }
+      if (prof?.is_banned) {
+        try { await supabase.auth.signOut() } catch {}
+        setBanned(true)
+        setLoading(false)
+        return
+      }
     }
     router.push(redirect)
     router.refresh()
@@ -29,6 +62,10 @@ function SignInContent() {
 
   async function handleOAuth(provider: 'google' | 'discord') {
     setError('')
+    setBanned(false)
+    // OAuth goes through /auth/callback which returns us here. AuthContext
+    // will detect the banned flag after the session lands and redirect back
+    // to /auth/signin?banned=1 — no extra check needed on this side.
     const { error } = await supabase.auth.signInWithOAuth({
       provider,
       options: { redirectTo: `${window.location.origin}/auth/callback?next=${redirect}` },
@@ -40,7 +77,17 @@ function SignInContent() {
     <div className="bg-[#18181b] rounded-2xl w-full max-w-[360px] border border-[#27272a] p-6">
       <h2 className="font-bold text-lg mb-5">Sign In to NANOTOON</h2>
 
-      {error && (
+      {banned && (
+        <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-3 mb-3">
+          <div className="flex items-center gap-1.5 mb-1.5">
+            <span className="text-base">🚫</span>
+            <span className="text-[#f87171] text-xs font-semibold">Account Suspended</span>
+          </div>
+          <p className="text-[#fca5a5] text-[0.72rem] leading-relaxed">{BAN_MESSAGE}</p>
+        </div>
+      )}
+
+      {error && !banned && (
         <div className="bg-red-500/10 border border-red-500/30 text-red-400 text-xs rounded-xl p-2.5 mb-3">
           {error}
         </div>

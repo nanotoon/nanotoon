@@ -22,16 +22,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const { data } = await anonDb.from("profiles").select("*").eq("id", uid).maybeSingle() as { data: any };
       // If the admin flagged this account as banned, force a sign-out. The
       // ban flag is set via /api/admin-ban and picked up on the very next
-      // session read (e.g. page load or onAuthStateChange). A notification
-      // has already been inserted by the ban endpoint, so they'll see the
-      // reason on their next visit (or via email if notifications are piped).
+      // session read (e.g. page load or onAuthStateChange). We redirect to
+      // /auth/signin?banned=1 so the sign-in page shows the suspension
+      // message — this replaces the old notification-based approach, and
+      // also catches users who were already signed in when the admin
+      // banned them.
       if (data?.is_banned) {
         try { await supabase.auth.signOut(); } catch {}
         setUser(null);
         setProfile(null);
         if (typeof window !== "undefined") {
-          try { alert("Your account has been suspended. Please check your notifications or contact nanotooncontact@gmail.com to appeal."); } catch {}
-          window.location.replace("/");
+          // Avoid a redirect loop: if we're already on /auth/signin, just
+          // reload with the ?banned=1 flag so the message appears. Otherwise
+          // send them to sign-in from wherever they were.
+          const target = "/auth/signin?banned=1";
+          if (window.location.pathname + window.location.search !== target) {
+            window.location.replace(target);
+          }
         }
         return;
       }
