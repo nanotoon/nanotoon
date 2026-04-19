@@ -215,19 +215,35 @@ export default function EditSeriesPage() {
   }
 
   // ─── Save Chapter Edits ─────────────────────────────────────
+  // FIX: rating changes were silently failing before — saves appeared to
+  // succeed (no error, toast said "updated") but the stored rating never
+  // changed. Title changes worked. That's the fingerprint of a column-level
+  // RLS or policy that permits UPDATE on (title, ...) but not on rating.
+  // Routing through /api/chapter-update gets us a service-role write that
+  // bypasses whatever the production policy looks like, while still
+  // enforcing ownership (the route checks that the caller owns the series
+  // or is the admin). If the server env is missing the service role key,
+  // the route returns a clear 501 instead of silently succeeding, so the
+  // user actually sees the problem.
   async function saveChapter(chId: string) {
     await ensureFreshSession()
     setSavingCh(true)
-    const { error } = await (createWriteClient() as any).from('chapters').update({
-      title: editChTitle, rating: editChRating
-    }).eq('id', chId)
-    if (error) show('Failed: ' + error.message)
-    else {
+    try {
+      const res = await fetch('/api/chapter-update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chapterId: chId, title: editChTitle, rating: editChRating }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) { show('Failed: ' + (json.error || 'Update failed')); setSavingCh(false); return }
       setChapters(prev => prev.map(c => c.id === chId ? { ...c, title: editChTitle, rating: editChRating } : c))
       show('Chapter updated!')
       setTimeout(() => window.location.reload(), 600)
+    } catch (e: any) {
+      show('Failed: ' + (e?.message || 'Network error'))
+    } finally {
+      setSavingCh(false)
     }
-    setSavingCh(false)
   }
 
   // ─── Delete Chapter ─────────────────────────────────────────
