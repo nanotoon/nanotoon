@@ -20,6 +20,10 @@ export default function EditSeriesPage() {
 
   const [series, setSeries] = useState<any>(null)
   const [chapters, setChapters] = useState<any[]>([])
+  // Snapshot of chapters exactly as loaded from the DB. Used at Save time to
+  // diff against the current (possibly edited-in-place) `chapters` state so
+  // we only write rows that actually changed. See the unified save() below.
+  const [originalChapters, setOriginalChapters] = useState<any[]>([])
   const [title, setTitle] = useState('')
   const [desc, setDesc] = useState('')
   const [format, setFormat] = useState('Series')
@@ -31,11 +35,18 @@ export default function EditSeriesPage() {
   const [readingMode, setReadingMode] = useState<'webtoon' | 'horizontal'>('webtoon')
   const [readingDirection, setReadingDirection] = useState<'ltr' | 'rtl'>('ltr')
 
-  // Expanded chapter for editing
+  // Expanded chapter for editing.
+  //
+  // NOTE: We deliberately do NOT keep a separate editChTitle/editChRating pair
+  // here. The inputs inside the expanded chapter bind directly to the chapter
+  // object in `chapters` state (edited in place via updateChapterField).
+  // That way:
+  //   1. Edits survive collapsing/expanding another chapter (previously the
+  //      single editChTitle/editChRating slot was overwritten on expand).
+  //   2. The unified "Save Changes" button can diff and persist every edited
+  //      chapter in one pass, so there's no separate "Save Chapter" button
+  //      to hunt for.
   const [expandedChId, setExpandedChId] = useState<string | null>(null)
-  const [editChTitle, setEditChTitle] = useState('')
-  const [editChRating, setEditChRating] = useState('General')
-  const [savingCh, setSavingCh] = useState(false)
 
   // Add chapter form
   const [showAddChapter, setShowAddChapter] = useState(false)
@@ -60,8 +71,11 @@ export default function EditSeriesPage() {
       setReadingMode(s.reading_mode || 'webtoon')
       setReadingDirection(s.reading_direction || 'ltr')
       const { data: chs } = await anonDb.from('chapters').select('*').eq('series_id', s.id).order('chapter_number', { ascending: true }) as { data: any[] | null }
-      setChapters(chs ?? [])
-      if (chs && chs.length > 0) setNewChNumber(chs[chs.length - 1].chapter_number + 1)
+      const chList = chs ?? []
+      setChapters(chList)
+      // Deep-clone so later in-place edits to `chapters` don't mutate the snapshot.
+      setOriginalChapters(chList.map((c: any) => ({ ...c, page_urls: c.page_urls ? [...c.page_urls] : c.page_urls })))
+      if (chList.length > 0) setNewChNumber(chList[chList.length - 1].chapter_number + 1)
       setLoading(false)
     }
     fetch()
@@ -74,8 +88,12 @@ export default function EditSeriesPage() {
       return
     }
     setExpandedChId(ch.id)
-    setEditChTitle(ch.title)
-    setEditChRating(ch.rating)
+  }
+
+  // Edit a field on a single chapter in the local `chapters` state. The change
+  // stays staged (not written to DB) until the user clicks "Save Changes".
+  function updateChapterField(chId: string, field: string, value: any) {
+    setChapters(prev => prev.map(c => c.id === chId ? { ...c, [field]: value } : c))
   }
 
   // ─── Series Thumbnail ───────────────────────────────────────
@@ -120,6 +138,20 @@ export default function EditSeriesPage() {
 
   // Format toggle is locked when 1 chapter + 1 page (forced One Shot)
   const formatLocked = chapters.length === 1 && (chapters[0]?.page_urls?.length ?? 0) <= 1
+
+  // Keep the locally-selected `format` in sync with the staged chapter state.
+  //
+  // Previously the DB-writing deletePage / movePage / addPagesToChapter paths
+  // all called syncSeriesFormat() to bump the series.format row when the
+  // chapter/page counts crossed a threshold. Now that page edits are staged,
+  // we do the equivalent in local state only — the actual DB write happens
+  // inside save() along with everything else. This preserves the UX where
+  // dropping to 1 chapter + 1 page flips the format UI to "One Shot", and
+  // growing past those thresholds lets the creator re-pick.
+  useEffect(() => {
+    setFormat(prev => deriveAutoFormat(prev, chapters))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chapters])
 
   // ─── Save Series Info ───────────────────────────────────────
   async function save() {
@@ -183,6 +215,52 @@ export default function EditSeriesPage() {
           show('Chapters not synced: ' + chErr.message)
         }
       }
+
+      // FIX: unified-save for chapter-level edits.
+      //
+      // The old flow had a separate "Save Chapter" button inside each expanded
+      // chapter that persisted title/rating, and deletePage/movePage wrote to
+      // the DB on every click. Both are gone now — instead we diff each
+      // chapter in the local `chapters` state against the snapshot taken on
+      // load (`originalChapters`), and push a single UPDATE per changed row.
+      //
+      // Fields we diff:
+      //   - title          (edited in the chapter's title input)
+      //   - rating         (toggled by the General / Mature buttons)
+      //   - page_urls      (staged page deletions and reorderings)
+      //
+      // We intentionally do NOT diff chapter_number here — chapter reordering
+      // (moveChapter) still commits immediately on its own, and add-pages /
+      // add-chapter flows have their own persistence. This loop is just for
+      // edits staged while the chapter was expanded.
+      const wc = createWriteClient() as any
+      if (wc) {
+        const arraysEqual = (a: any[] | null | undefined, b: any[] | null | undefined) => {
+          const aa = a || []
+          const bb = b || []
+          if (aa.length !== bb.length) return false
+          for (let i = 0; i < aa.length; i++) if (aa[i] !== bb[i]) return false
+          return true
+        }
+        for (const ch of chapters) {
+          const orig = originalChapters.find(o => o.id === ch.id)
+          if (!orig) continue  // newly added chapter — already persisted by addChapter()
+          const titleChanged  = (ch.title ?? '') !== (orig.title ?? '')
+          const ratingChanged = (ch.rating ?? '') !== (orig.rating ?? '')
+          const pagesChanged  = !arraysEqual(ch.page_urls, orig.page_urls)
+          if (!titleChanged && !ratingChanged && !pagesChanged) continue
+          const patch: any = {}
+          if (titleChanged)  patch.title      = ch.title
+          if (ratingChanged) patch.rating     = ch.rating
+          if (pagesChanged)  patch.page_urls  = (ch.page_urls && ch.page_urls.length > 0) ? ch.page_urls : null
+          const { error: upErr } = await wc.from('chapters').update(patch).eq('id', ch.id)
+          if (upErr) {
+            // One bad chapter shouldn't silently swallow the whole save, so
+            // surface it but keep going — other chapters may still succeed.
+            show(`Ch. ${ch.chapter_number} save failed: ${upErr.message}`)
+          }
+        }
+      }
       setSeries((s: any) => ({ ...s, title, description: desc, format, genres: Array.from(genres), thumbnail_url: thumbnailUrl, reading_mode: readingMode, reading_direction: newDirection }))
       setNewThumbFile(null)
       show('Changes saved!')
@@ -212,38 +290,6 @@ export default function EditSeriesPage() {
     if (error) { show('Delete failed: ' + error.message); return }
     show('Series deleted')
     router.push('/profile')
-  }
-
-  // ─── Save Chapter Edits ─────────────────────────────────────
-  // FIX: rating changes were silently failing before — saves appeared to
-  // succeed (no error, toast said "updated") but the stored rating never
-  // changed. Title changes worked. That's the fingerprint of a column-level
-  // RLS or policy that permits UPDATE on (title, ...) but not on rating.
-  // Routing through /api/chapter-update gets us a service-role write that
-  // bypasses whatever the production policy looks like, while still
-  // enforcing ownership (the route checks that the caller owns the series
-  // or is the admin). If the server env is missing the service role key,
-  // the route returns a clear 501 instead of silently succeeding, so the
-  // user actually sees the problem.
-  async function saveChapter(chId: string) {
-    await ensureFreshSession()
-    setSavingCh(true)
-    try {
-      const res = await fetch('/api/chapter-update', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chapterId: chId, title: editChTitle, rating: editChRating }),
-      })
-      const json = await res.json().catch(() => ({}))
-      if (!res.ok) { show('Failed: ' + (json.error || 'Update failed')); setSavingCh(false); return }
-      setChapters(prev => prev.map(c => c.id === chId ? { ...c, title: editChTitle, rating: editChRating } : c))
-      show('Chapter updated!')
-      setTimeout(() => window.location.reload(), 600)
-    } catch (e: any) {
-      show('Failed: ' + (e?.message || 'Network error'))
-    } finally {
-      setSavingCh(false)
-    }
   }
 
   // ─── Delete Chapter ─────────────────────────────────────────
@@ -281,24 +327,28 @@ export default function EditSeriesPage() {
   }
 
   // ─── Page Management ────────────────────────────────────────
-  async function deletePage(chId: string, pageIndex: number) {
+  //
+  // deletePage and movePage are STAGED — they only mutate the local
+  // `chapters` state. The actual DB write happens when the user clicks
+  // "Save Changes" at the bottom, which diffs page_urls against the
+  // originalChapters snapshot and UPDATEs rows that changed.
+  //
+  // This lets the creator freely rearrange / remove pages until satisfied
+  // and commit everything in one go, instead of the previous behavior
+  // where every click hit the DB and triggered a full page reload.
+  function deletePage(chId: string, pageIndex: number) {
     const ch = chapters.find(c => c.id === chId)
     if (!ch || !ch.page_urls) return
     // FIX: removed the 2-page minimum per user request (1-page chapters are allowed).
-    // If deleting the last page leaves zero, we still allow it — page_urls just becomes null.
+    // If deleting the last page leaves zero, we still allow it — page_urls just becomes null on save.
     if (ch.page_urls.length <= 1 && !confirm('This is the last page. Delete it anyway? (Chapter will have no pages.)')) return
     if (ch.page_urls.length > 1 && !confirm(`Delete page ${pageIndex + 1}?`)) return
     const newUrls = ch.page_urls.filter((_: any, i: number) => i !== pageIndex)
-    const { error } = await (createWriteClient() as any).from('chapters').update({ page_urls: newUrls.length > 0 ? newUrls : null }).eq('id', chId)
-    if (error) { show('Failed: ' + error.message); return }
-    const updatedChapters = chapters.map(c => c.id === chId ? { ...c, page_urls: newUrls.length > 0 ? newUrls : null } : c)
-    setChapters(updatedChapters)
-    // FIX: re-derive format after page count changes on sole chapter
-    await syncSeriesFormat(updatedChapters)
-    show('Page deleted'); setTimeout(() => window.location.reload(), 600)
+    setChapters(prev => prev.map(c => c.id === chId ? { ...c, page_urls: newUrls } : c))
+    show('Page removed — click Save Changes to apply')
   }
 
-  async function movePage(chId: string, fromIdx: number, direction: 'up' | 'down') {
+  function movePage(chId: string, fromIdx: number, direction: 'up' | 'down') {
     const ch = chapters.find(c => c.id === chId)
     if (!ch || !ch.page_urls) return
     const toIdx = direction === 'up' ? fromIdx - 1 : fromIdx + 1
@@ -307,10 +357,7 @@ export default function EditSeriesPage() {
     const temp = newUrls[fromIdx]
     newUrls[fromIdx] = newUrls[toIdx]
     newUrls[toIdx] = temp
-    const { error } = await (createWriteClient() as any).from('chapters').update({ page_urls: newUrls }).eq('id', chId)
-    if (error) { show('Failed: ' + error.message); return }
     setChapters(prev => prev.map(c => c.id === chId ? { ...c, page_urls: newUrls } : c))
-    show('Page order updated'); setTimeout(() => window.location.reload(), 600)
   }
 
   async function addPagesToChapter(chId: string, e: React.ChangeEvent<HTMLInputElement>) {
@@ -527,26 +574,25 @@ export default function EditSeriesPage() {
             {/* Expanded chapter editor */}
             {isExpanded && (
               <div className="bg-[#1e1e21] rounded-b-lg p-3 border border-t-0 border-[#3f3f46]">
-                {/* Edit title & rating */}
+                {/* Edit title & rating — inputs bind directly to the chapter
+                    row in local state; edits stay staged until Save Changes. */}
                 <div className="flex flex-col md:flex-row gap-2 mb-3">
                   <div className="flex-1">
                     <label className="block text-[0.65rem] text-[#71717a] mb-0.5">Chapter Title</label>
-                    <input value={editChTitle} onChange={e => setEditChTitle(e.target.value)}
+                    <input value={ch.title ?? ''} onChange={e => updateChapterField(ch.id, 'title', e.target.value)}
                       className="w-full bg-[#27272a] border border-[#3f3f46] rounded-lg p-1.5 text-[#e4e4e7] text-sm outline-none focus:border-[#a855f7]" />
                   </div>
                   <div>
                     <label className="block text-[0.65rem] text-[#71717a] mb-0.5">Rating</label>
                     <div className="flex gap-1">
-                      <button onClick={() => setEditChRating('General')} className={`px-2 py-1 rounded text-xs border ${editChRating === 'General' ? 'border-green-500 text-green-400 bg-green-500/[0.08]' : 'border-[#3f3f46] text-[#71717a] bg-transparent'}`}>General</button>
-                      <button onClick={() => setEditChRating('Mature')} className={`px-2 py-1 rounded text-xs border ${editChRating === 'Mature' ? 'border-amber-500 text-amber-400 bg-amber-500/[0.08]' : 'border-[#3f3f46] text-[#71717a] bg-transparent'}`}>Mature</button>
+                      <button onClick={() => updateChapterField(ch.id, 'rating', 'General')} className={`px-2 py-1 rounded text-xs border ${ch.rating === 'General' ? 'border-green-500 text-green-400 bg-green-500/[0.08]' : 'border-[#3f3f46] text-[#71717a] bg-transparent'}`}>General</button>
+                      <button onClick={() => updateChapterField(ch.id, 'rating', 'Mature')} className={`px-2 py-1 rounded text-xs border ${ch.rating === 'Mature' ? 'border-amber-500 text-amber-400 bg-amber-500/[0.08]' : 'border-[#3f3f46] text-[#71717a] bg-transparent'}`}>Mature</button>
                     </div>
                   </div>
                 </div>
+                {/* No per-chapter "Save Chapter" button — title/rating edits
+                    are picked up by the unified Save Changes at the bottom. */}
                 <div className="flex gap-1.5 mb-3">
-                  <button onClick={() => saveChapter(ch.id)} disabled={savingCh}
-                    className="px-3 py-1 bg-[#7c3aed] text-white rounded-lg text-xs border-none cursor-pointer hover:bg-[#6d28d9] disabled:opacity-50">
-                    {savingCh ? 'Saving...' : 'Save Chapter'}
-                  </button>
                   <button onClick={() => moveChapter(ch.id, 'up')} disabled={idx === 0}
                     className={`px-2 py-1 border border-[#3f3f46] rounded-lg text-xs cursor-pointer bg-transparent ${idx === 0 ? 'opacity-30 text-[#52525b]' : 'text-[#a1a1aa] hover:border-[#a855f7]'}`}>▲ Move Up</button>
                   <button onClick={() => moveChapter(ch.id, 'down')} disabled={idx === chapters.length - 1}

@@ -692,46 +692,19 @@ export default function ReaderPage() {
         {maxCh > 0 && (
           <div className="px-4 pb-3 border-t border-[#27272a] mt-1">
             <button onClick={() => setShowChapters(!showChapters)} className="w-full flex items-center justify-center gap-2 py-1.5 md:py-2 cursor-pointer bg-transparent border-none">
-              <span className="text-xs md:text-sm font-medium text-[#e4e4e7] flex items-center gap-1.5">
-                Chapter {currentCh}{currentChData?.title ? `: ${currentChData.title}` : ''}
-                {/* FIX: surface the chapter's mature rating right next to its
-                   title in the selected-chapter label, same as inside the
-                   dropdown list below. Before, a reader who picked a
-                   chapter couldn't tell from the dropdown area that the
-                   selected chapter was rated Mature — only the main float
-                   menu showed it.
-                   Check is case-insensitive (toLowerCase + trim) because the
-                   stored `rating` column has sometimes come through as
-                   lowercase/padded from older uploads. */}
-                {(currentChData?.rating || '').toString().trim().toLowerCase() === 'mature' && (
-                  <span className="bg-amber-600 text-white text-[0.55rem] md:text-[0.6rem] px-1.5 py-0.5 rounded font-bold tracking-wide">MATURE</span>
-                )}
-                <span className="text-[#71717a] font-normal">(views: {fmtNum(chapterViews)})</span>
+              <span className="text-xs md:text-sm font-medium text-[#e4e4e7]">
+                Chapter {currentCh}{currentChData?.title ? `: ${currentChData.title}` : ''} <span className="text-[#71717a] font-normal">(views: {fmtNum(chapterViews)})</span>
               </span>
               <span className="text-xs md:text-sm text-[#c084fc]">{showChapters ? '▲' : '▼'}</span>
             </button>
             {showChapters && (
               <div className="max-h-[220px] overflow-y-auto bg-[#0d0d0f] rounded-lg p-1 mt-2">
-                {chapters.map(ch => {
-                  // Case-insensitive check so any stored variation ("Mature",
-                  // "mature", "MATURE", with surrounding whitespace) lights
-                  // up the badge. This is the row that readers see when they
-                  // expand the chapter picker — without the badge here they
-                  // couldn't tell a mature chapter apart before picking it.
-                  const isMature = (ch.rating || '').toString().trim().toLowerCase() === 'mature'
-                  return (
-                    <button key={ch.id} onClick={() => switchChapter(ch.chapter_number)}
-                      className={`w-full p-2 md:p-2.5 rounded-lg cursor-pointer text-xs md:text-sm flex items-center justify-center text-center border-none ${ch.chapter_number === currentCh ? 'bg-purple-500/15 text-[#c084fc]' : 'bg-transparent text-[#e4e4e7] hover:bg-[#27272a]'}`}>
-                      <span className="flex items-center gap-1.5 flex-wrap justify-center">
-                        {isMature && (
-                          <span className="bg-amber-600 text-white text-[0.55rem] md:text-[0.6rem] px-1.5 py-0.5 rounded font-bold tracking-wide shrink-0">MATURE</span>
-                        )}
-                        <span>Chapter {ch.chapter_number}{ch.title ? `: ${ch.title}` : ''}</span>
-                        <span className="text-[#71717a]">(views: {fmtNum(ch.views)})</span>
-                      </span>
-                    </button>
-                  )
-                })}
+                {chapters.map(ch => (
+                  <button key={ch.id} onClick={() => switchChapter(ch.chapter_number)}
+                    className={`w-full p-2 md:p-2.5 rounded-lg cursor-pointer text-xs md:text-sm flex items-center justify-center text-center border-none ${ch.chapter_number === currentCh ? 'bg-purple-500/15 text-[#c084fc]' : 'bg-transparent text-[#e4e4e7] hover:bg-[#27272a]'}`}>
+                    <span>Chapter {ch.chapter_number}{ch.title ? `: ${ch.title}` : ''} <span className="text-[#71717a]">(views: {fmtNum(ch.views)})</span></span>
+                  </button>
+                ))}
               </div>
             )}
           </div>
