@@ -136,7 +136,6 @@ export function Navbar() {
                     </div>
                     <Link href="/profile" onClick={() => setShowDropdown(false)} className="flex items-center gap-3 px-5 py-3 text-[#e4e4e7] hover:bg-[#27272a] text-base md:text-lg no-underline">👤 Profile</Link>
                     <Link href="/followers" onClick={() => setShowDropdown(false)} className="flex items-center gap-3 px-5 py-3 text-[#e4e4e7] hover:bg-[#27272a] text-base md:text-lg no-underline">👥 Followers</Link>
-                    <Link href="/faq" onClick={() => setShowDropdown(false)} className="flex items-center gap-3 px-5 py-3 text-[#e4e4e7] hover:bg-[#27272a] text-base md:text-lg no-underline">❓ FAQ</Link>
                     <Link href="/settings" onClick={() => setShowDropdown(false)} className="flex items-center gap-3 px-5 py-3 text-[#e4e4e7] hover:bg-[#27272a] text-base md:text-lg no-underline">⚙️ Settings</Link>
                     <div className="border-t border-[#3f3f46] my-1"></div>
                     <button onClick={handleSignOut} className="w-full flex items-center gap-3 px-5 py-3 text-[#f87171] hover:bg-[#27272a] text-base md:text-lg bg-transparent border-none cursor-pointer text-left">Sign Out</button>

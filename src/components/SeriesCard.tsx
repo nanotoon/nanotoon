@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { GRADIENTS } from '@/data/mock'
 
 // Shared across the app — keep identical to the float-menu tooltip and FAQ.
-export const MATURE_FAQ_TEXT = "Violence & Dark Themes: We support high-stakes storytelling. Intense graphic violence and realistic blood are permitted in Mature-tagged chapters. However, content that exists solely to depict sadistic torture without narrative purpose, or content that mimics real-world 'snuff,' is prohibited to comply with safety regulations.\n\nNudity & Mature Content — Non-sexual nudity is allowed, provided that genitalia are fully obscured or censored. Pornographic content is strictly prohibited.\n\nFor more information about this, explore the FAQ page."
+export const MATURE_FAQ_TEXT = "Violence & Dark Themes: We support high-stakes storytelling. Intense graphic violence and realistic blood are permitted in Mature-tagged chapters. However, content that exists solely to depict sadistic torture without narrative purpose is prohibited.\n\nNudity & Mature Content — Non-sexual nudity is allowed, provided that genitalia are fully obscured or censored. Pornographic content is strictly prohibited.\n\nFor more information about this, explore the FAQ page."
 
 // Shown when hovering the ONE SHOT badge. Kept short because the tooltip
 // sits over a thumbnail and we don't want to cover too much of the art.

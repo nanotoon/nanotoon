@@ -693,7 +693,11 @@ export default function ReaderPage() {
           <div className="px-4 pb-3 border-t border-[#27272a] mt-1">
             <button onClick={() => setShowChapters(!showChapters)} className="w-full flex items-center justify-center gap-2 py-1.5 md:py-2 cursor-pointer bg-transparent border-none">
               <span className="text-xs md:text-sm font-medium text-[#e4e4e7]">
-                Chapter {currentCh}{currentChData?.title ? `: ${currentChData.title}` : ''} <span className="text-[#71717a] font-normal">(views: {fmtNum(chapterViews)})</span>
+                Chapter {currentCh}{currentChData?.title ? `: ${currentChData.title}` : ''}
+                {currentChData?.rating === 'Mature' && (
+                  <span className="mx-1.5 inline-block align-middle bg-amber-600 text-white text-[0.55rem] md:text-[0.6rem] px-1 py-[1px] rounded font-bold leading-none">MATURE</span>
+                )}
+                <span className="text-[#71717a] font-normal">(views: {fmtNum(chapterViews)})</span>
               </span>
               <span className="text-xs md:text-sm text-[#c084fc]">{showChapters ? '▲' : '▼'}</span>
             </button>
@@ -702,7 +706,13 @@ export default function ReaderPage() {
                 {chapters.map(ch => (
                   <button key={ch.id} onClick={() => switchChapter(ch.chapter_number)}
                     className={`w-full p-2 md:p-2.5 rounded-lg cursor-pointer text-xs md:text-sm flex items-center justify-center text-center border-none ${ch.chapter_number === currentCh ? 'bg-purple-500/15 text-[#c084fc]' : 'bg-transparent text-[#e4e4e7] hover:bg-[#27272a]'}`}>
-                    <span>Chapter {ch.chapter_number}{ch.title ? `: ${ch.title}` : ''} <span className="text-[#71717a]">(views: {fmtNum(ch.views)})</span></span>
+                    <span>
+                      Chapter {ch.chapter_number}{ch.title ? `: ${ch.title}` : ''}
+                      {ch.rating === 'Mature' && (
+                        <span className="mx-1.5 inline-block align-middle bg-amber-600 text-white text-[0.55rem] md:text-[0.6rem] px-1 py-[1px] rounded font-bold leading-none">MATURE</span>
+                      )}
+                      <span className="text-[#71717a]">(views: {fmtNum(ch.views)})</span>
+                    </span>
                   </button>
                 ))}
               </div>

@@ -19,6 +19,7 @@ export default function TermsPage() {
         <p className="mb-4">You own everything you upload. NANOTOON does not claim ownership of your work. By uploading, you grant us a non-exclusive license to display, distribute, and promote your content on the platform. You can delete your content at any time.</p>
         <h3 className="text-[#e4e4e7] text-base font-semibold mb-2">Content Rules</h3>
         <p className="mb-2"><strong className="text-[#e4e4e7]">Allowed:</strong> Action, violence, blood, horror, and dark themes. Non-sexual nudity (genitalia must be obscured). Intense graphic violence must be tagged Mature.</p>
+        <p className="mb-2">However, content that exists solely to depict sadistic torture without narrative purpose is prohibited.</p>
         <p className="mb-4"><strong className="text-[#e4e4e7]">Not allowed:</strong> Pornographic content. Sexual content involving minors (zero tolerance). Dangerous instructions. Self-harm promotion. Content inciting real-world violence. Malware, scams, spam.</p>
         <h3 className="text-[#e4e4e7] text-base font-semibold mb-2">Community Behavior</h3>
         <p>Be decent to each other. Harassment, hate speech, doxxing, impersonation, and targeted bullying are not tolerated.</p>
