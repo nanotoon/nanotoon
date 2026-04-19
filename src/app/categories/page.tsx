@@ -2,6 +2,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { SeriesCard } from '@/components/SeriesCard'
 import { LoadingSpinner } from '@/components/LoadingSpinner'
+import { AdsterraBanner } from '@/components/AdsterraBanner'
 import { categories } from '@/data/mock'
 import { useToast } from '@/components/Toast'
 import { createAnonClient } from '@/lib/supabase/anon'
@@ -115,6 +116,11 @@ export default function CategoriesPage() {
             ))}
           </div>
         )}
+
+        {/* Adsterra 728x90 banner — moved up from the footer so it sits between
+            Most Viewed and Latest Updates. AdsterraBanner itself handles mobile
+            scaling + overflow:hidden to prevent the old horizontal-swipe bug. */}
+        <AdsterraBanner />
 
         <h2 className="text-base font-semibold text-[#c084fc] mb-3">Latest Updates</h2>
         {filteredSeries.length > 0 ? (

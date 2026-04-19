@@ -3,6 +3,7 @@ import { useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
 import { SeriesCard } from '@/components/SeriesCard'
 import { LoadingSpinner } from '@/components/LoadingSpinner'
+import { AdsterraBanner } from '@/components/AdsterraBanner'
 import { useToast } from '@/components/Toast'
 import { createAnonClient } from '@/lib/supabase/anon'
 import { latestRating } from '@/lib/seriesRating'
@@ -85,6 +86,10 @@ export default function HomePage() {
           <div className="grid gap-2.5 md:gap-4 grid-cols-3 md:grid-cols-9">{mostViewed.slice(0, isMobile ? 6 : 9).map((s, i) => (<SeriesCard key={s.id} title={s.title} slug={s.slug} author={s.profiles?.display_name || 'Unknown'} thumbnailUrl={s.thumbnail_url} latestChapter={0} rating={latestRating(s.chapters)} format={s.format} index={i} views={s.total_views} likes={s.total_likes} favorites={s.total_favorites} />))}</div>
         )}
       </section>
+      {/* Adsterra 728x90 banner — moved up from the footer so it sits between
+          Most Viewed and Latest Updates. AdsterraBanner itself handles mobile
+          scaling + overflow:hidden to prevent the old horizontal-swipe bug. */}
+      <AdsterraBanner />
       <section>
         <Link href="/browse?mode=latest" className="text-base font-semibold text-[#c084fc] no-underline flex items-center gap-1 mb-3 hover:text-[#a855f7]">Latest Updates <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></Link>
         {!loading && latest.length === 0 ? <p className="text-center py-12 text-[#52525b] text-sm">No series yet.</p> : (

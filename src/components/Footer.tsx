@@ -1,26 +1,18 @@
 'use client'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
-import { AdsterraBanner } from './AdsterraBanner'
 
 export function Footer() {
-  const pathname = usePathname() || ''
-
-  // Show the Adsterra footer banner only on:
-  //   • Homepage (Read tab)           → "/"
-  //   • Categories tab                → "/categories" (and any sub-routes)
-  //   • Any series / chapter page     → "/series/<slug>" (and its sub-routes)
-  // Note: we intentionally exclude the series edit routes ("/series/<slug>/edit"),
-  // which are author-only pages and not the public chapter reader.
-  const showAd =
-    pathname === '/' ||
-    pathname === '/categories' ||
-    pathname.startsWith('/categories/') ||
-    (pathname.startsWith('/series/') && !pathname.includes('/edit'))
+  // NOTE: The Adsterra banner used to render here at the bottom of the page
+  // on homepage, categories, and series/chapter pages. It has since been
+  // moved inline into each of those pages:
+  //   • Home (page.tsx)          → between "Most Viewed" and "Latest Updates"
+  //   • Categories (page.tsx)    → between "Most Viewed" and "Latest Updates"
+  //   • Series chapter reader    → between Prev/Next Chapter and chapter comments
+  //     (728x90 AdsterraBanner in horizontal mode, 300x250 AdsterraBannerBox in webtoon mode)
+  // So the footer now just renders the footer row — no ad, no pathname check.
 
   return (
     <footer className="border-t border-[#27272a] mt-10">
-      {showAd && <AdsterraBanner />}
       <div className="px-4 md:px-8 py-6 flex flex-col md:flex-row items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <div className="w-6 h-6 bg-gradient-to-br from-[#7c3aed] to-[#c026d3] rounded-md flex items-center justify-center">

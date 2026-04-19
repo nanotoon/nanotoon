@@ -7,6 +7,8 @@ import { GRADIENTS } from '@/data/mock'
 import { Avatar } from '@/components/Avatar'
 import { ShareModal } from '@/components/ShareModal'
 import { ReportModal } from '@/components/ReportModal'
+import { AdsterraBanner } from '@/components/AdsterraBanner'
+import { AdsterraBannerBox } from '@/components/AdsterraBannerBox'
 import { useToast } from '@/components/Toast'
 import { useAuth } from '@/contexts/AuthContext'
 import { createAnonClient } from '@/lib/supabase/anon'
@@ -806,6 +808,16 @@ export default function ReaderPage() {
           <button onClick={() => { if (currentCh < maxCh) switchChapter(currentCh + 1); else show("You're caught up!") }}
             className="flex-1 py-2.5 border border-[#3f3f46] rounded-xl bg-transparent text-[#a1a1aa] cursor-pointer text-sm hover:border-[#a855f7] flex items-center justify-center gap-1">Next Chapter</button>
         </div>
+      )}
+
+      {/* Adsterra ad — moved up from the footer and placed between the
+          Prev/Next Chapter nav and the chapter comments.
+            • Webtoon mode    → 300x250 box (AdsterraBannerBox, key ae75f4d3…)
+            • Horizontal mode → 728x90 banner (AdsterraBanner, key 87dd8a89…)
+          Both components scale + overflow:hidden on mobile so neither can
+          cause the horizontal-swipe-to-black-page bug. */}
+      {maxCh > 0 && (
+        isHorizontal ? <AdsterraBanner /> : <AdsterraBannerBox />
       )}
 
       {/* Chapter Comments */}
