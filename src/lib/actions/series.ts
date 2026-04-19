@@ -124,7 +124,10 @@ export async function updateSeries(seriesId: string, formData: FormData) {
       format,
       genres,
       thumbnail_url: thumbnailUrl || null,
-      updated_at: new Date().toISOString(),
+      // FIX (ranking): do NOT bump `updated_at` on series edit. Latest Updates
+      // sorts by updated_at, and editing a series must not push it back to the
+      // top. Only publishing a new chapter should trigger that bump (handled
+      // in chapters.createChapter and UploadModal / addChapter flows).
     })
     .eq("id", seriesId)
     .eq("author_id", user.id); // RLS backup: only author can update

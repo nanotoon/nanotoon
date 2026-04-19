@@ -794,7 +794,17 @@ export default function ReaderPage() {
               <img src={panels[currentPage]} className="w-full rounded-lg" alt={`Page ${currentPage+1}`} />
               {panels.length > 1 && <div className="flex flex-col items-center gap-2 mt-3">
                 <div className="flex items-center justify-center gap-3">
-                  {!(isRTL ? currentPage===panels.length-1 : currentPage===0) && <button onClick={()=>setCurrentPage(p=> isRTL ? Math.min(panels.length-1,p+1) : Math.max(0,p-1))} className="w-[40px] h-[38px] border border-[#3f3f46] rounded-xl text-sm cursor-pointer bg-transparent flex items-center justify-center text-[#a1a1aa] hover:border-[#a855f7]">◀</button>}
+                  {/* FIX (visual only): swap the Unicode ◀ / ▶ chars for SVG
+                      chevrons identical to the ones used in the fullscreen
+                      overlay. On Windows / some desktop browsers, Unicode
+                      ◀ and ▶ are rendered by the system emoji font (Segoe UI
+                      Emoji) which ignores CSS color and draws them blue, even
+                      though the button's text color is gray. Mobile uses a
+                      monochrome font so the chars render correctly. Replacing
+                      with SVGs gives both viewports the same clean look. */}
+                  {!(isRTL ? currentPage===panels.length-1 : currentPage===0) && <button onClick={()=>setCurrentPage(p=> isRTL ? Math.min(panels.length-1,p+1) : Math.max(0,p-1))} className="w-[40px] h-[38px] border border-[#3f3f46] rounded-xl text-sm cursor-pointer bg-transparent flex items-center justify-center text-[#a1a1aa] hover:border-[#a855f7]">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                  </button>}
                   {(isRTL ? currentPage===panels.length-1 : currentPage===0) && <div className="w-[40px] h-[38px]" />}
                   <button onClick={()=>{setFullscreenPage(currentPage);setShowFullscreen(true)}}
                     title="Full Screen"
@@ -807,7 +817,9 @@ export default function ReaderPage() {
                     </svg>
                     <span className="absolute -top-8 left-1/2 -translate-x-1/2 px-2 py-1 bg-[#27272a] border border-[#3f3f46] rounded text-[0.65rem] text-[#e4e4e7] whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">Full Screen</span>
                   </button>
-                  {!(isRTL ? currentPage===0 : currentPage===panels.length-1) && <button onClick={()=>setCurrentPage(p=> isRTL ? Math.max(0,p-1) : Math.min(panels.length-1,p+1))} className="w-[40px] h-[38px] border border-[#3f3f46] rounded-xl text-sm cursor-pointer bg-transparent flex items-center justify-center text-[#a1a1aa] hover:border-[#a855f7]">▶</button>}
+                  {!(isRTL ? currentPage===0 : currentPage===panels.length-1) && <button onClick={()=>setCurrentPage(p=> isRTL ? Math.max(0,p-1) : Math.min(panels.length-1,p+1))} className="w-[40px] h-[38px] border border-[#3f3f46] rounded-xl text-sm cursor-pointer bg-transparent flex items-center justify-center text-[#a1a1aa] hover:border-[#a855f7]">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                  </button>}
                   {(isRTL ? currentPage===0 : currentPage===panels.length-1) && <div className="w-[40px] h-[38px]" />}
                 </div>
                 <span className="text-sm text-[#71717a]">{currentPage+1}/{panels.length}</span>

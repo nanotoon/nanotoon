@@ -178,11 +178,15 @@ export default function EditSeriesPage() {
       } catch (e: any) { show('Thumbnail upload failed: ' + e.message); setSaving(false); return }
     }
     const newDirection = readingMode === 'horizontal' ? readingDirection : 'ltr'
+    // FIX (ranking): do NOT stamp `updated_at` on series edit. `updated_at` is
+    // what the Latest Updates ranking sorts by, and per site rules editing a
+    // series / editing a chapter / adding-or-removing pages must NOT bump the
+    // series back to the top. Only publishing a NEW chapter should reset rank.
+    // (See addChapter() below and UploadModal for the bump paths we intentionally keep.)
     const { error } = await (createWriteClient() as any).from('series').update({
       title, description: desc, format, genres: Array.from(genres),
       thumbnail_url: thumbnailUrl, reading_mode: readingMode,
       reading_direction: newDirection,
-      updated_at: new Date().toISOString()
     }).eq('id', series.id)
     if (error) show('Save failed: ' + error.message)
     else {
@@ -264,7 +268,7 @@ export default function EditSeriesPage() {
       setSeries((s: any) => ({ ...s, title, description: desc, format, genres: Array.from(genres), thumbnail_url: thumbnailUrl, reading_mode: readingMode, reading_direction: newDirection }))
       setNewThumbFile(null)
       show('Changes saved!')
-      // Kick to the author's profile so their latest edit appears up top.
+      // Kick to the author's profile after a successful save.
       const target = profile?.handle ? `/user/${profile.handle}` : '/profile'
       setTimeout(() => { window.location.href = target }, 600)
     }
@@ -295,8 +299,32 @@ export default function EditSeriesPage() {
   // ─── Delete Chapter ─────────────────────────────────────────
   async function deleteChapter(id: string) {
     if (!confirm('Delete this chapter and all its pages?')) return
-    const { error } = await (createWriteClient() as any).from('chapters').delete().eq('id', id)
+    // FIX (views): before deleting the chapter, capture its view count so we
+    // can subtract it from `series.total_views`. Otherwise a deleted chapter's
+    // views keep inflating the series total across the home page, browse
+    // (?mode=mostviewed / ?mode=latest), category, favorites, following,
+    // profile, and /user/<handle> views columns. series.total_views and
+    // chapters.views are tracked independently by /api/views (see
+    // src/app/api/views/route.ts), so we have to manually rebalance here.
+    const deletedCh = chapters.find(c => c.id === id)
+    const deletedViews = Math.max(0, deletedCh?.views ?? 0)
+
+    const wc = createWriteClient() as any
+    const { error } = await wc.from('chapters').delete().eq('id', id)
     if (error) { show('Failed: ' + error.message); return }
+
+    // Rebalance series.total_views. We re-read the current value and subtract
+    // — deliberately not wrapped in a transaction for the same reason
+    // /api/views does +1 un-transactionally: view counts are best-effort and
+    // a lost race is acceptable.
+    if (series && deletedViews > 0) {
+      const { data: srow } = await wc.from('series').select('total_views').eq('id', series.id).maybeSingle()
+      const current = (srow as any)?.total_views ?? 0
+      const next = Math.max(0, current - deletedViews)
+      await wc.from('series').update({ total_views: next }).eq('id', series.id)
+      setSeries((s: any) => s ? { ...s, total_views: next } : s)
+    }
+
     const newChapters = chapters.filter(c => c.id !== id)
     setChapters(newChapters)
     if (expandedChId === id) setExpandedChId(null)

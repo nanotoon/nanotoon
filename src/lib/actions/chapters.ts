@@ -102,12 +102,41 @@ export async function deleteChapter(chapterId: string, seriesSlug: string) {
 
   if (!user) return { error: "Not logged in" };
 
+  // FIX (views): capture the chapter's series_id + view count before deleting,
+  // so we can subtract its views from series.total_views. Otherwise the deleted
+  // chapter's views keep inflating the series total wherever total_views is
+  // displayed (home/read, browse, category, favorites, following, profile,
+  // /user/<handle>, series float menu).
+  const { data: chRow } = await supabase
+    .from("chapters")
+    .select("series_id, views")
+    .eq("id", chapterId)
+    .maybeSingle();
+
   const { error } = await supabase
     .from("chapters")
     .delete()
     .eq("id", chapterId);
 
   if (error) return { error: error.message };
+
+  // Rebalance series.total_views (best-effort, mirrors /api/views semantics).
+  if (chRow && (chRow as any).series_id) {
+    const deletedViews = Math.max(0, (chRow as any).views ?? 0);
+    if (deletedViews > 0) {
+      const { data: sRow } = await supabase
+        .from("series")
+        .select("total_views")
+        .eq("id", (chRow as any).series_id)
+        .maybeSingle();
+      const current = (sRow as any)?.total_views ?? 0;
+      const next = Math.max(0, current - deletedViews);
+      await supabase
+        .from("series")
+        .update({ total_views: next })
+        .eq("id", (chRow as any).series_id);
+    }
+  }
 
   revalidatePath(`/series/${seriesSlug}`);
   return { error: null };
