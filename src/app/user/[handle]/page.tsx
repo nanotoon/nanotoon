@@ -181,10 +181,27 @@ export default function PublicProfilePage() {
       setIsFollowing(true)
       setFollowerCount(c => c + 1)
       // Notify the user who was just followed
-      ;(wc as any).from('notifications').insert({
-        user_id: profile.id, actor_id: uid, type: 'follow',
-        message: 'started following you',
-      }).then(() => {}, () => {})
+      //
+      // Anti-spam dedupe: if this actor already triggered a "follow"
+      // notification for this target within the last 1 hour, skip the insert
+      // so the target's inbox doesn't flood when someone spam-toggles follow.
+      {
+        const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString()
+        const { data: recent } = await (wc as any).from('notifications')
+          .select('id')
+          .eq('user_id', profile.id)
+          .eq('actor_id', uid)
+          .eq('type', 'follow')
+          .gte('created_at', oneHourAgo)
+          .limit(1)
+          .maybeSingle()
+        if (!recent) {
+          ;(wc as any).from('notifications').insert({
+            user_id: profile.id, actor_id: uid, type: 'follow',
+            message: 'started following you',
+          }).then(() => {}, () => {})
+        }
+      }
       show('Following!')
     }
   }
@@ -204,6 +221,20 @@ export default function PublicProfilePage() {
     if (!res.ok) { show('Ban failed: ' + (json.error || 'Unknown error')); return }
     setProfile((p: any) => p ? { ...p, is_banned: true, banned_at: new Date().toISOString() } : p)
     show('User banned. They will be signed out on their next action.')
+  }
+
+  // Self-only: delete one of your own series from the public profile page.
+  // Mirrors the /profile page's delSeries — same confirm, same delete call,
+  // same optimistic removal from state. The Delete button that triggers this
+  // is only rendered when isSelf is true (see the series grid below), so the
+  // function is effectively gated on "this is me viewing my own profile".
+  async function delSeries(id: string) {
+    await ensureFreshSession()
+    if (!confirm('Delete this series?')) return
+    const { error } = await (createWriteClient() as any).from('series').delete().eq('id', id)
+    if (error) { show('Failed to delete: ' + error.message); return }
+    setTheirSeries(prev => prev.filter(s => s.id !== id))
+    show('Series deleted')
   }
 
   // FIX: Don't gate render on authLoading — public profile doesn't need auth
@@ -338,7 +369,19 @@ export default function PublicProfilePage() {
           <>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
               {visible.map((s, i) => (
-                <SeriesCard key={s.id} title={s.title} slug={s.slug} author={dn} thumbnailUrl={s.thumbnail_url} latestChapter={0} rating={latestRating(s.chapters)} format={s.format} index={i} views={s.total_views} likes={s.total_likes} favorites={s.total_favorites} />
+                <div key={s.id}>
+                  <SeriesCard title={s.title} slug={s.slug} author={dn} thumbnailUrl={s.thumbnail_url} latestChapter={0} rating={latestRating(s.chapters)} format={s.format} index={i} views={s.total_views} likes={s.total_likes} favorites={s.total_favorites} />
+                  {/* Edit / Delete buttons — only rendered when the viewer is
+                      the series author (i.e. looking at their own /user/[handle]
+                      page). Matches the /profile page exactly so authors get
+                      the same controls regardless of which URL they land on. */}
+                  {isSelf && (
+                    <div className="flex gap-1.5 mt-1.5">
+                      <Link href={`/series/${s.slug}/edit`} className="flex-1 py-1 bg-[#27272a] border border-[#3f3f46] rounded-lg text-[0.7rem] text-[#c084fc] text-center hover:border-[#a855f7] no-underline">Edit</Link>
+                      <button onClick={() => delSeries(s.id)} className="flex-1 py-1 bg-[#27272a] border border-[#3f3f46] rounded-lg text-[0.7rem] text-[#f87171] hover:border-[#ef4444] cursor-pointer">Delete</button>
+                    </div>
+                  )}
+                </div>
               ))}
             </div>
             {/* View More — grid here is 4-per-row PC / 2-per-row mobile, so

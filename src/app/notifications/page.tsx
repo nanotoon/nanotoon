@@ -77,6 +77,15 @@ export default function NotificationsPage() {
       return
     }
 
+    // FIX: follow notifications → go to the actor's profile page. Previously
+    // these fell through to the generic detail view, which rendered the bare
+    // message ("started following you") without the actor's name — confusing
+    // and useless. Going to the actor's profile is the natural action anyway.
+    if (n.type === 'follow' && n.actor?.handle) {
+      router.push(`/user/${n.actor.handle}`)
+      return
+    }
+
     // Notifications with a link → navigate there
     if (n.link) {
       router.push(n.link)

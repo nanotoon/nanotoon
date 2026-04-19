@@ -373,11 +373,30 @@ export default function ReaderPage() {
       const { count } = await anonDb.from('likes').select('*', { count: 'exact', head: true }).eq('series_id', series.id) as any
       setSeries((s: any) => ({ ...s, total_likes: count ?? (s.total_likes ?? 0) + 1 }))
       // FIX: notify series author on like (skip self-likes)
+      //
+      // Anti-spam dedupe: if this actor already triggered a "like" notification
+      // on this same series within the last 1 hour, skip the insert so the
+      // author's inbox doesn't get flooded by someone toggling the like button
+      // back and forth. The like toggle itself still works (row gets inserted
+      // into `likes` as normal, the counter updates) — we're only suppressing
+      // the notification row.
       if (series.author_id && series.author_id !== uid) {
-        (wc as any).from('notifications').insert({
-          user_id: series.author_id, actor_id: uid, type: 'like',
-          message: `liked "${series.title}"`, series_id: series.id,
-        }).then(() => {}, () => {})
+        const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString()
+        const { data: recent } = await (wc as any).from('notifications')
+          .select('id')
+          .eq('user_id', series.author_id)
+          .eq('actor_id', uid)
+          .eq('type', 'like')
+          .eq('series_id', series.id)
+          .gte('created_at', oneHourAgo)
+          .limit(1)
+          .maybeSingle()
+        if (!recent) {
+          (wc as any).from('notifications').insert({
+            user_id: series.author_id, actor_id: uid, type: 'like',
+            message: `liked "${series.title}"`, series_id: series.id,
+          }).then(() => {}, () => {})
+        }
       }
       show('Liked!')
     }
@@ -416,10 +435,28 @@ export default function ReaderPage() {
       if (error) { show('Error: ' + error.message); return }
       setIsFollowing(true)
       // FIX: notify the user who was just followed
-      ;(wc as any).from('notifications').insert({
-        user_id: series.author_id, actor_id: uid, type: 'follow',
-        message: 'started following you',
-      }).then(() => {}, () => {})
+      //
+      // Anti-spam dedupe: if this actor already triggered a "follow"
+      // notification for this target within the last 1 hour, skip the insert
+      // so the target's inbox doesn't flood when someone spam-toggles follow.
+      // No series_id on follow notifs, so the key is (user, actor, type, time).
+      {
+        const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString()
+        const { data: recent } = await (wc as any).from('notifications')
+          .select('id')
+          .eq('user_id', series.author_id)
+          .eq('actor_id', uid)
+          .eq('type', 'follow')
+          .gte('created_at', oneHourAgo)
+          .limit(1)
+          .maybeSingle()
+        if (!recent) {
+          ;(wc as any).from('notifications').insert({
+            user_id: series.author_id, actor_id: uid, type: 'follow',
+            message: 'started following you',
+          }).then(() => {}, () => {})
+        }
+      }
       show('Following!')
     }
   }
