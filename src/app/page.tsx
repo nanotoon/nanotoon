@@ -20,17 +20,31 @@ export default function HomePage() {
   const [mostViewed, setMostViewed] = useState<any[]>([])
   const [latest, setLatest] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [latestLimit, setLatestLimit] = useState(45)
+  // FIX: Latest Updates limit is now mobile-aware (27 mobile / 45 PC) and
+  // grows by mobile-aware increments (+6 mobile / +18 PC) each View More
+  // press. We start at 0 so the first-mount effect picks the right seed
+  // once we know isMobile. Without the `0` seed we'd flash 45 cards on
+  // mobile before snapping back to 27.
+  const [latestLimit, setLatestLimit] = useState(0)
+  const [latestLoading, setLatestLoading] = useState(true)
 
   useEffect(() => { function c() { setIsMobile(window.innerWidth < 768) }; c(); setMounted(true); window.addEventListener('resize', c); return () => window.removeEventListener('resize', c) }, [])
 
+  // FIX (View More bug): previously there was a single useEffect with
+  // `[formatFilter, latestLimit, mvTime, supabase]` deps — every time a user
+  // hit View More, `latestLimit` changed, the whole effect re-ran, and
+  // Most Viewed was re-fetched needlessly (flashing back to a spinner even
+  // though its data can't have changed). Split the effect: Most Viewed only
+  // depends on format/time, Latest only on format/limit. They stay in sync
+  // visually via their own independent loading flags.
+
+  // --- Most Viewed ---
   useEffect(() => {
     let cancelled = false
-    // Safety timeout — never let homepage loading hang
     const safetyTimeout = setTimeout(() => {
-      if (!cancelled) { setLoading(false); console.warn('Homepage safety timeout fired') }
+      if (!cancelled) { setLoading(false); console.warn('Homepage Most Viewed safety timeout fired') }
     }, 6000)
-    async function load() {
+    async function loadMv() {
       try {
         setLoading(true)
         let mvQ = supabase.from('series').select('*, profiles!series_author_id_fkey(display_name, handle, avatar_url), chapters(rating, chapter_number)').neq('is_removed', true).order('total_views', { ascending: false }).limit(9)
@@ -42,24 +56,42 @@ export default function HomePage() {
         // intuitive "popular recently" reading.
         const mvSince = timeWindowSince(mvTime)
         if (mvSince) mvQ = mvQ.gte('updated_at', mvSince)
+        const mv = await mvQ
+        if (mv.error) console.error('Most viewed query error:', mv.error.message)
+        const mvHydrated = await hydrateSeriesCounts(supabase, (mv.data ?? []) as any[])
+        if (!cancelled) setMostViewed(mvHydrated)
+      } catch (err: any) { console.error('Home Most Viewed load error:', err) }
+      finally { clearTimeout(safetyTimeout); if (!cancelled) setLoading(false) }
+    }
+    loadMv()
+    return () => { cancelled = true; clearTimeout(safetyTimeout) }
+  }, [formatFilter, mvTime, supabase])
+
+  // --- Latest Updates ---
+  useEffect(() => {
+    // Seed latestLimit on first mount (after isMobile resolves) so we don't
+    // over-fetch 45 on a phone before flipping to 27.
+    if (!mounted) return
+    if (latestLimit === 0) { setLatestLimit(isMobile ? 27 : 45); return }
+    let cancelled = false
+    const safetyTimeout = setTimeout(() => {
+      if (!cancelled) { setLatestLoading(false); console.warn('Homepage Latest safety timeout fired') }
+    }, 6000)
+    async function loadLt() {
+      try {
+        setLatestLoading(true)
         let latQ = supabase.from('series').select('*, profiles!series_author_id_fkey(display_name, handle, avatar_url), chapters(rating, chapter_number)').neq('is_removed', true).order('updated_at', { ascending: false }).limit(latestLimit)
         if (formatFilter !== 'All') latQ = latQ.eq('format', formatFilter)
-        const [mv, lt] = await Promise.all([mvQ, latQ])
-        if (mv.error) console.error('Most viewed query error:', mv.error.message)
+        const lt = await latQ
         if (lt.error) console.error('Latest query error:', lt.error.message)
-        // Hydrate real like/favorite counts from the source-of-truth tables
-        // so cards here match the series-page float menu and user profile.
-        // See src/lib/hydrateSeriesCounts.ts for the full explanation.
-        const [mvHydrated, ltHydrated] = await Promise.all([
-          hydrateSeriesCounts(supabase, (mv.data ?? []) as any[]),
-          hydrateSeriesCounts(supabase, (lt.data ?? []) as any[]),
-        ])
-        if (!cancelled) { setMostViewed(mvHydrated); setLatest(ltHydrated) }
-      } catch (err: any) { console.error('Home page load error:', err) } finally { clearTimeout(safetyTimeout); if (!cancelled) setLoading(false) }
+        const ltHydrated = await hydrateSeriesCounts(supabase, (lt.data ?? []) as any[])
+        if (!cancelled) setLatest(ltHydrated)
+      } catch (err: any) { console.error('Home Latest load error:', err) }
+      finally { clearTimeout(safetyTimeout); if (!cancelled) setLatestLoading(false) }
     }
-    load()
+    loadLt()
     return () => { cancelled = true; clearTimeout(safetyTimeout) }
-  }, [formatFilter, latestLimit, mvTime, supabase])
+  }, [formatFilter, latestLimit, mounted, isMobile, supabase])
 
   if (!mounted) return <div className="min-h-screen" />
 
@@ -72,7 +104,7 @@ export default function HomePage() {
       <div className="flex items-center gap-1.5 mb-6 flex-wrap">
         <span className="text-[0.75rem] text-[#71717a] shrink-0">Show:</span>
         {['All', 'Series', 'One Shot'].map(f => (
-          <button key={f} onClick={() => { setFormatFilter(f); setLatestLimit(45) }} className={`px-3 py-1 rounded-full text-[0.73rem] cursor-pointer border transition-all ${formatFilter === f ? 'bg-[#7c3aed] border-[#7c3aed] text-white' : 'bg-transparent border-[#3f3f46] text-[#71717a] hover:border-[#a855f7] hover:text-[#c084fc]'}`}>{f}</button>
+          <button key={f} onClick={() => { setFormatFilter(f); setLatestLimit(isMobile ? 27 : 45) }} className={`px-3 py-1 rounded-full text-[0.73rem] cursor-pointer border transition-all ${formatFilter === f ? 'bg-[#7c3aed] border-[#7c3aed] text-white' : 'bg-transparent border-[#3f3f46] text-[#71717a] hover:border-[#a855f7] hover:text-[#c084fc]'}`}>{f}</button>
         ))}
       </div>
       <section className="mb-9">
@@ -92,10 +124,12 @@ export default function HomePage() {
       <AdsterraBanner />
       <section>
         <Link href="/browse?mode=latest" className="text-base font-semibold text-[#c084fc] no-underline flex items-center gap-1 mb-3 hover:text-[#a855f7]">Latest Updates <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></Link>
-        {!loading && latest.length === 0 ? <p className="text-center py-12 text-[#52525b] text-sm">No series yet.</p> : (
+        {latestLoading && latest.length === 0 ? <LoadingSpinner /> : !latestLoading && latest.length === 0 ? <p className="text-center py-12 text-[#52525b] text-sm">No series yet.</p> : (
           <div className="grid gap-2.5 md:gap-4 grid-cols-3 md:grid-cols-9">{latest.map((s, i) => (<SeriesCard key={s.id} title={s.title} slug={s.slug} author={s.profiles?.display_name || 'Unknown'} thumbnailUrl={s.thumbnail_url} latestChapter={0} rating={latestRating(s.chapters)} format={s.format} index={i + 9} views={s.total_views} likes={s.total_likes} favorites={s.total_favorites} />))}</div>
         )}
-        {latest.length > 0 && <div className="flex justify-center mt-7"><button onClick={() => { setLatestLimit(prev => prev + 18); show('Loaded more!') }} className="px-7 py-2.5 border border-[#3f3f46] rounded-xl bg-transparent text-[#a1a1aa] cursor-pointer text-sm hover:border-[#a855f7] hover:text-[#c084fc]">View More</button></div>}
+        {/* View More — mobile-aware increment (+6 mobile / +18 PC) so each
+            press adds exactly two rows worth of cards. */}
+        {latest.length > 0 && <div className="flex justify-center mt-7"><button onClick={() => { setLatestLimit(prev => prev + (isMobile ? 6 : 18)); show('Loaded more!') }} className="px-7 py-2.5 border border-[#3f3f46] rounded-xl bg-transparent text-[#a1a1aa] cursor-pointer text-sm hover:border-[#a855f7] hover:text-[#c084fc]">View More</button></div>}
       </section>
     </div>
   )

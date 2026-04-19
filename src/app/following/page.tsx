@@ -21,10 +21,27 @@ export default function FollowingPage() {
   const [formatFilter, setFormatFilter] = useState('All')
   const [timeFilter, setTimeFilter] = useState<TimeWindow>('All Time')
   const [loading, setLoading] = useState(true)
+  // FIX: View More on the Series-from-Followed grid. Caps/steps are mobile-
+  // aware: 45 PC max / 27 mobile max, +18 PC / +6 mobile per press (same
+  // numbers as home & favorites, even though the grid is 4-per-row here
+  // — user asked for these exact values).
+  const [isMobile, setIsMobile] = useState(false)
+  const [mounted, setMounted] = useState(false)
+  const [feedLimit, setFeedLimit] = useState(0)
+
+  useEffect(() => {
+    function check() { setIsMobile(window.innerWidth < 768) }
+    check()
+    setMounted(true)
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
 
   useEffect(() => {
     if (authLoading) return
     if (!user) { setLoading(false); return }
+    if (!mounted) return
+    if (feedLimit === 0) { setFeedLimit(isMobile ? 27 : 45); return }
 
     let cancelled = false
     const timeout = setTimeout(() => { if (!cancelled) setLoading(false) }, 6000)
@@ -48,12 +65,13 @@ export default function FollowingPage() {
         const followedIds = follows.map((f: any) => f.following_id).filter(Boolean)
 
         if (followedIds.length > 0) {
-          // Fetch series from followed users
+          // Fetch series from followed users — limit is mobile-aware and
+          // grows via View More.
           const seriesRes = await anonDb.from('series')
             .select('*, profiles!series_author_id_fkey(display_name, handle, avatar_url), chapters(rating, chapter_number)')
             .neq('is_removed', true).in('author_id', followedIds)
             .order('updated_at', { ascending: false })
-            .limit(20) as any
+            .limit(feedLimit) as any
 
           if (!cancelled) {
             // Hydrate real like/favorite counts from the source-of-truth tables
@@ -72,7 +90,7 @@ export default function FollowingPage() {
     }
     load()
     return () => { cancelled = true; clearTimeout(timeout) }
-  }, [user, authLoading, anonDb])
+  }, [user, authLoading, anonDb, feedLimit, mounted, isMobile])
 
   async function unfollow(targetId: string, name: string) {
     if (!confirm(`Unfollow ${name}?`)) return
@@ -170,6 +188,17 @@ export default function FollowingPage() {
               />
             ))}
           </div>
+          {/* View More — mobile-aware increment (+6 mobile / +18 PC). We show
+              it whenever the server returned exactly feedLimit rows, i.e.
+              there may be more available. If a filter has narrowed the
+              visible list, the grid might still be short, but the button
+              stays offered because more rows really do exist on the server. */}
+          {feedSeries.length >= feedLimit && (
+            <div className="flex justify-center mt-2 mb-8">
+              <button onClick={() => { setFeedLimit(l => l + (isMobile ? 6 : 18)); show('Loaded more!') }}
+                className="px-7 py-2.5 border border-[#3f3f46] rounded-xl bg-transparent text-[#a1a1aa] cursor-pointer text-sm hover:border-[#a855f7] hover:text-[#c084fc]">View More</button>
+            </div>
+          )}
         </>)}
       </>)}
     </div>

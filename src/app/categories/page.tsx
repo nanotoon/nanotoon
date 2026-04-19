@@ -16,44 +16,76 @@ export default function CategoriesPage() {
   const [selectedCat, setSelectedCat] = useState<string | null>(null)
   const [formatFilter, setFormatFilter] = useState('All')
   const [mvTime, setMvTime] = useState<TimeWindow>('All Time')
+  // FIX: mostViewedSeries is now its own query (top 9 by total_views), not
+  // derived from the Latest Updates list. Previously pressing View More on
+  // Latest re-ran the shared fetch and flashed Most Viewed through a loading
+  // state even though its data is unrelated to the limit.
+  const [mostViewedSeries, setMostViewedSeries] = useState<any[]>([])
   const [series, setSeries] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [limit, setLimit] = useState(45)
+  const [latestLoading, setLatestLoading] = useState(true)
+  // FIX: mobile-aware Latest Updates limit (27 mobile / 45 PC). Seed to 0 so
+  // the first-mount effect picks the right value once isMobile resolves.
+  const [limit, setLimit] = useState(0)
   const resultsRef = useRef<HTMLDivElement>(null)
   const [isMobile, setIsMobile] = useState(false)
+  const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
     function check() { setIsMobile(window.innerWidth < 768) }
     check()
+    setMounted(true)
     window.addEventListener('resize', check)
     return () => window.removeEventListener('resize', check)
   }, [])
 
+  // --- Most Viewed (top 9 by total_views, category-aware) ---
   useEffect(() => {
     let cancelled = false
-    async function load() {
+    async function loadMv() {
       try {
         setLoading(true)
+        let q = supabase.from('series').select('*, profiles!series_author_id_fkey(display_name, handle, avatar_url), chapters(rating, chapter_number)').neq('is_removed', true)
+          .order('total_views', { ascending: false }).limit(9)
+        if (selectedCat) q = q.contains('genres', [selectedCat])
+        // NOTE: format & time filters are applied client-side to mirror how
+        // Latest Updates treats them; we only use the server for the cheap
+        // "top by total_views in this category" cut.
+        const { data } = await q
+        const hydrated = await hydrateSeriesCounts(supabase, (data ?? []) as any[])
+        if (!cancelled) { setMostViewedSeries(hydrated); setLoading(false) }
+      } catch { if (!cancelled) setLoading(false) }
+    }
+    loadMv()
+    return () => { cancelled = true }
+  }, [selectedCat, supabase])
+
+  // --- Latest Updates (mobile-aware limit, grows via View More) ---
+  useEffect(() => {
+    if (!mounted) return
+    if (limit === 0) { setLimit(isMobile ? 27 : 45); return }
+    let cancelled = false
+    async function loadLatest() {
+      try {
+        setLatestLoading(true)
         let q = supabase.from('series').select('*, profiles!series_author_id_fkey(display_name, handle, avatar_url), chapters(rating, chapter_number)').neq('is_removed', true)
           .order('updated_at', { ascending: false }).limit(limit)
         if (selectedCat) q = q.contains('genres', [selectedCat])
         const { data } = await q
-        // Hydrate real like/favorite counts from the source-of-truth tables
-        // so cards here match the series-page float menu and user profile.
         const hydrated = await hydrateSeriesCounts(supabase, (data ?? []) as any[])
-        if (!cancelled) { setSeries(hydrated); setLoading(false) }
-      } catch { if (!cancelled) setLoading(false) }
+        if (!cancelled) { setSeries(hydrated); setLatestLoading(false) }
+      } catch { if (!cancelled) setLatestLoading(false) }
     }
-    load()
+    loadLatest()
     return () => { cancelled = true }
-  }, [selectedCat, limit, supabase])
+  }, [selectedCat, limit, mounted, isMobile, supabase])
 
   function handleCatClick(catName: string) {
     if (selectedCat === catName) {
       setSelectedCat(null)
     } else {
       setSelectedCat(catName)
-      setLimit(45)
+      setLimit(isMobile ? 27 : 45)
       show(`Filtering: ${catName}`)
       // Auto-scroll on mobile
       if (isMobile && resultsRef.current) {
@@ -64,13 +96,17 @@ export default function CategoriesPage() {
     }
   }
 
+  // Latest Updates — client-side format filter on the pre-fetched list.
   const filteredSeries = formatFilter === 'All' ? series : series.filter(s => s.format === formatFilter)
-  // FIX: time pill (Today/Week/Month/Year/All Time) narrows ONLY the Most
-  // Viewed slice, same placement and semantics as the Read-tab Most Viewed
-  // pills. Latest Updates below stays unfiltered, matching the home page.
+  // Most Viewed — now its own server fetch (top 9 by total_views). Apply the
+  // format + time filters client-side and then slice to 6 mobile / 9 PC so
+  // the layout matches the home page's Most Viewed behaviour.
   const mvSince = timeWindowSince(mvTime)
-  const mvPool = mvSince ? filteredSeries.filter(s => s.updated_at && s.updated_at >= mvSince) : filteredSeries
-  const mvSeries = [...mvPool].sort((a, b) => (b.total_views ?? 0) - (a.total_views ?? 0)).slice(0, 9)
+  const mvFiltered = mostViewedSeries.filter(s =>
+    (formatFilter === 'All' || s.format === formatFilter)
+    && (!mvSince || (s.updated_at && s.updated_at >= mvSince))
+  )
+  const mvSeries = mvFiltered.slice(0, isMobile ? 6 : 9)
 
   return (
     <div className="px-4 md:px-8 py-6">
@@ -98,7 +134,7 @@ export default function CategoriesPage() {
           <div className="flex items-center gap-2 flex-wrap">
             <h2 className="text-base font-semibold text-[#c084fc]">Most Viewed</h2>
             <span className="bg-[#27272a] text-[#c084fc] rounded-full px-2.5 py-0.5 text-[0.71rem] font-medium">{selectedCat || 'All'}</span>
-            {selectedCat && <button onClick={() => { setSelectedCat(null); setLimit(45) }} className="bg-transparent border border-[#3f3f46] rounded-full px-2.5 py-0.5 text-[0.71rem] text-[#71717a] cursor-pointer hover:border-[#a855f7]">✕ Clear</button>}
+            {selectedCat && <button onClick={() => { setSelectedCat(null); setLimit(isMobile ? 27 : 45) }} className="bg-transparent border border-[#3f3f46] rounded-full px-2.5 py-0.5 text-[0.71rem] text-[#71717a] cursor-pointer hover:border-[#a855f7]">✕ Clear</button>}
           </div>
           <div className="flex gap-1.5 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
             {TIME_WINDOWS.map(t => (
@@ -131,12 +167,13 @@ export default function CategoriesPage() {
                   latestChapter={0} rating={latestRating(s.chapters)} format={s.format} index={i + 9} views={s.total_views} likes={s.total_likes} favorites={s.total_favorites} />
               ))}
             </div>
+            {/* View More — mobile-aware increment (+6 mobile / +18 PC). */}
             <div className="flex justify-center mt-7">
-              <button onClick={() => { setLimit(p => p + 18); show('Loaded more!') }}
+              <button onClick={() => { setLimit(p => p + (isMobile ? 6 : 18)); show('Loaded more!') }}
                 className="px-7 py-2.5 border border-[#3f3f46] rounded-xl bg-transparent text-[#a1a1aa] cursor-pointer text-sm hover:border-[#a855f7] hover:text-[#c084fc]">View More</button>
             </div>
           </>
-        ) : !loading && <p className="text-center py-8 text-[#71717a] text-sm">No series yet.</p>}
+        ) : !latestLoading && <p className="text-center py-8 text-[#71717a] text-sm">No series yet.</p>}
       </div>
     </div>
   )

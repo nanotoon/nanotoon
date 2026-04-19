@@ -3,6 +3,7 @@ import { useState, useEffect, useMemo, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { SeriesCard } from '@/components/SeriesCard'
 import { LoadingSpinner } from '@/components/LoadingSpinner'
+import { AdsterraBanner } from '@/components/AdsterraBanner'
 import { useToast } from '@/components/Toast'
 import { createAnonClient } from '@/lib/supabase/anon'
 import { latestRating } from '@/lib/seriesRating'
@@ -16,9 +17,23 @@ function BrowseContent() {
   const mode = searchParams.get('mode') || 'mostviewed'
   const [series, setSeries] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [limit, setLimit] = useState(45)
+  // FIX: mobile-aware limit (27 mobile / 45 PC). Seed at 0 so the first-mount
+  // effect picks the right seed once isMobile resolves — same pattern as home.
+  const [limit, setLimit] = useState(0)
+  const [isMobile, setIsMobile] = useState(false)
+  const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
+    function check() { setIsMobile(window.innerWidth < 768) }
+    check()
+    setMounted(true)
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
+
+  useEffect(() => {
+    if (!mounted) return
+    if (limit === 0) { setLimit(isMobile ? 27 : 45); return }
     let cancelled = false
     const timeout = setTimeout(() => { if (!cancelled) setLoading(false) }, 8000)
     async function load() {
@@ -33,7 +48,7 @@ function BrowseContent() {
     }
     load()
     return () => { cancelled = true; clearTimeout(timeout) }
-  }, [mode, limit, supabase])
+  }, [mode, limit, mounted, isMobile, supabase])
 
   return (
     <div className="px-4 md:px-8 py-6">
@@ -53,10 +68,17 @@ function BrowseContent() {
           ))}
         </div>
       )}
+      {/* View More — mobile-aware increment (+6 mobile / +18 PC). */}
       {series.length > 0 && <div className="flex justify-center mt-7">
-        <button onClick={() => { setLimit(p => p + 18); show('Loaded more!') }}
+        <button onClick={() => { setLimit(p => p + (isMobile ? 6 : 18)); show('Loaded more!') }}
           className="px-7 py-2.5 border border-[#3f3f46] rounded-xl bg-transparent text-[#a1a1aa] cursor-pointer text-sm hover:border-[#a855f7] hover:text-[#c084fc]">View More</button>
       </div>}
+      {/* Adsterra 728x90 banner — shown as a footer ad on the Browse page
+          (both ?mode=mostviewed and ?mode=latest). AdsterraBanner handles
+          mobile scaling + overflow:hidden to avoid the horizontal-swipe bug. */}
+      <div className="mt-10">
+        <AdsterraBanner />
+      </div>
     </div>
   )
 }

@@ -32,6 +32,15 @@ export default function PublicProfilePage() {
   const [isFollowing, setIsFollowing] = useState(false)
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
+  // FIX: View More on the creator's series grid. Grid here is 4-per-row on
+  // PC / 2-per-row on mobile (narrower than the home grid), so the caps and
+  // step sizes are scaled to match: 40 PC max (10 rows) / 24 mobile max
+  // (12 rows), +8 PC / +4 mobile per press (2 rows' worth each time). Seed
+  // at 0 so the mount-time effect picks the right initial value once
+  // isMobile resolves.
+  const [isMobile, setIsMobile] = useState(false)
+  const [mounted, setMounted] = useState(false)
+  const [visibleCount, setVisibleCount] = useState(0)
   // FIX: Real totals come from the likes/favorites/views tables directly.
   // The denormalized series.total_likes / series.total_favorites columns are
   // only writable by the series author or the admin under RLS, so for everyone
@@ -40,6 +49,31 @@ export default function PublicProfilePage() {
   // series.total_views, which IS kept fresh via the new /api/views endpoint).
   const [realTotalLikes, setRealTotalLikes] = useState(0)
   const [realTotalFavorites, setRealTotalFavorites] = useState(0)
+
+  useEffect(() => {
+    function check() { setIsMobile(window.innerWidth < 768) }
+    check()
+    setMounted(true)
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
+
+  // Seed visibleCount once isMobile resolves on mount. We never shrink it
+  // after, so rotating phone→tablet mid-session just reveals what was
+  // already there rather than snapping back to the smaller cap.
+  useEffect(() => {
+    if (!mounted) return
+    if (visibleCount === 0) setVisibleCount(isMobile ? 24 : 40)
+  }, [mounted, isMobile, visibleCount])
+
+  // Reset the view-more count when the user flips a filter — otherwise
+  // someone who'd clicked View More a few times and then switched from
+  // "All" to "One Shot" would keep showing a larger count that no longer
+  // matches the reset-to-first-page mental model.
+  useEffect(() => {
+    if (!mounted) return
+    setVisibleCount(isMobile ? 24 : 40)
+  }, [formatFilter, timeFilter, mounted, isMobile])
 
   useEffect(() => {
     if (!handleParam) return
@@ -290,22 +324,35 @@ export default function PublicProfilePage() {
       </div>
       {theirSeries.length === 0 ? (
         <p className="text-[#71717a] text-sm mb-8">No series yet.</p>
-      ) : (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-          {(() => {
-            // "Recency" filter for a creator's series list — which of their
-            // works was most recently active (uploaded or updated). Uses
-            // series.updated_at, same column as the rest of the app.
-            const since = timeWindowSince(timeFilter)
-            return theirSeries.filter(s =>
-              (formatFilter === 'All' || s.format === formatFilter)
-              && (!since || (s.updated_at && s.updated_at >= since))
-            )
-          })().map((s, i) => (
-            <SeriesCard key={s.id} title={s.title} slug={s.slug} author={dn} thumbnailUrl={s.thumbnail_url} latestChapter={0} rating={latestRating(s.chapters)} format={s.format} index={i} views={s.total_views} likes={s.total_likes} favorites={s.total_favorites} />
-          ))}
-        </div>
-      )}
+      ) : (() => {
+        // Compute the filtered list ONCE so both the grid and the View More
+        // button can reference the full filtered length (to decide whether
+        // the button should show at all).
+        const since = timeWindowSince(timeFilter)
+        const filtered = theirSeries.filter(s =>
+          (formatFilter === 'All' || s.format === formatFilter)
+          && (!since || (s.updated_at && s.updated_at >= since))
+        )
+        const visible = filtered.slice(0, visibleCount || (isMobile ? 24 : 40))
+        return (
+          <>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+              {visible.map((s, i) => (
+                <SeriesCard key={s.id} title={s.title} slug={s.slug} author={dn} thumbnailUrl={s.thumbnail_url} latestChapter={0} rating={latestRating(s.chapters)} format={s.format} index={i} views={s.total_views} likes={s.total_likes} favorites={s.total_favorites} />
+              ))}
+            </div>
+            {/* View More — grid here is 4-per-row PC / 2-per-row mobile, so
+                each press reveals 2 rows worth (+8 PC / +4 mobile). Hidden
+                once all filtered series are already visible. */}
+            {filtered.length > visible.length && (
+              <div className="flex justify-center mt-2 mb-8">
+                <button onClick={() => { setVisibleCount(c => c + (isMobile ? 4 : 8)); show('Loaded more!') }}
+                  className="px-7 py-2.5 border border-[#3f3f46] rounded-xl bg-transparent text-[#a1a1aa] cursor-pointer text-sm hover:border-[#a855f7] hover:text-[#c084fc]">View More</button>
+              </div>
+            )}
+          </>
+        )
+      })()}
 
       {showShare && <ShareModal title={`@${h} on NANOTOON`} url={`${typeof window !== 'undefined' ? window.location.origin : ''}/user/${h}`} onClose={() => setShowShare(false)} />}
     </div>

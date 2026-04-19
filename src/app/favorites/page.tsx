@@ -2,6 +2,7 @@
 import { LoadingSpinner } from '@/components/LoadingSpinner'
 import { useState, useEffect, useMemo } from 'react'
 import { SeriesCard } from '@/components/SeriesCard'
+import { useToast } from '@/components/Toast'
 import { createAnonClient } from '@/lib/supabase/anon'
 import { useAuth } from '@/contexts/AuthContext'
 import { latestRating } from '@/lib/seriesRating'
@@ -10,11 +11,39 @@ import { TIME_WINDOWS, timeWindowSince, type TimeWindow } from '@/lib/timeWindow
 
 export default function FavoritesPage() {
   const { user, loading: authLoading } = useAuth()
+  const { show } = useToast()
   const supabase = useMemo(() => createAnonClient(), [])
   const [favorites, setFavorites] = useState<any[]>([])
   const [formatFilter, setFormatFilter] = useState('All')
   const [timeFilter, setTimeFilter] = useState<TimeWindow>('All Time')
   const [loading, setLoading] = useState(true)
+  // FIX: View More on the favorites grid. Grid is 9-per-row PC / 3-per-row
+  // mobile (same as home), so caps and step size match home: 45 PC max /
+  // 27 mobile max, +18 PC / +6 mobile per press. Seed at 0 so the
+  // mount-time effect picks the right value once isMobile resolves.
+  const [isMobile, setIsMobile] = useState(false)
+  const [mounted, setMounted] = useState(false)
+  const [visibleCount, setVisibleCount] = useState(0)
+
+  useEffect(() => {
+    function check() { setIsMobile(window.innerWidth < 768) }
+    check()
+    setMounted(true)
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
+
+  // Seed visibleCount once isMobile resolves on mount.
+  useEffect(() => {
+    if (!mounted) return
+    if (visibleCount === 0) setVisibleCount(isMobile ? 27 : 45)
+  }, [mounted, isMobile, visibleCount])
+
+  // Reset View More when a filter changes — same UX as the other tabs.
+  useEffect(() => {
+    if (!mounted) return
+    setVisibleCount(isMobile ? 27 : 45)
+  }, [formatFilter, timeFilter, mounted, isMobile])
 
   useEffect(() => {
     // Wait for auth to finish before doing anything
@@ -97,38 +126,52 @@ export default function FavoritesPage() {
           No favorites yet.<br />
           <span className="text-sm block mt-2">Start reading and tap Favorite inside a series!</span>
         </p>
-      ) : (
-        <div className="grid gap-2.5 md:gap-4 grid-cols-3 md:grid-cols-9">
-          {(() => {
-            // Time filter on this tab is "when I favorited it" — the
-            // favorites row's created_at — not the series' updated_at.
-            // Users browsing their favorites by time are asking "what
-            // did I add recently," not "which of my favorites got
-            // updated recently."
-            const since = timeWindowSince(timeFilter)
-            return favorites.filter(f =>
-              f.series && !f.series.is_removed
-              && (formatFilter === 'All' || f.series.format === formatFilter)
-              && (!since || (f.created_at && f.created_at >= since))
-            )
-          })().map((f, i) => (
-            <SeriesCard
-              key={f.series.id}
-              title={f.series.title}
-              slug={f.series.slug}
-              author={f.series.profiles?.display_name || 'Unknown'}
-              thumbnailUrl={f.series.thumbnail_url}
-              latestChapter={0}
-              rating={latestRating(f.series.chapters)}
-              format={f.series.format}
-              index={i}
-              views={f.series.total_views}
-              likes={f.series.total_likes}
-              favorites={f.series.total_favorites}
-            />
-          ))}
-        </div>
-      )}
+      ) : (() => {
+        // Compute the filtered list ONCE so the grid and the View More
+        // button can both reference the full filtered length.
+        //
+        // Time filter on this tab is "when I favorited it" — the favorites
+        // row's created_at — not the series' updated_at. Users browsing
+        // their favorites by time are asking "what did I add recently," not
+        // "which of my favorites got updated recently."
+        const since = timeWindowSince(timeFilter)
+        const filtered = favorites.filter(f =>
+          f.series && !f.series.is_removed
+          && (formatFilter === 'All' || f.series.format === formatFilter)
+          && (!since || (f.created_at && f.created_at >= since))
+        )
+        const visible = filtered.slice(0, visibleCount || (isMobile ? 27 : 45))
+        return (
+          <>
+            <div className="grid gap-2.5 md:gap-4 grid-cols-3 md:grid-cols-9">
+              {visible.map((f, i) => (
+                <SeriesCard
+                  key={f.series.id}
+                  title={f.series.title}
+                  slug={f.series.slug}
+                  author={f.series.profiles?.display_name || 'Unknown'}
+                  thumbnailUrl={f.series.thumbnail_url}
+                  latestChapter={0}
+                  rating={latestRating(f.series.chapters)}
+                  format={f.series.format}
+                  index={i}
+                  views={f.series.total_views}
+                  likes={f.series.total_likes}
+                  favorites={f.series.total_favorites}
+                />
+              ))}
+            </div>
+            {/* View More — mobile-aware increment (+6 mobile / +18 PC).
+                Hidden once all filtered favorites are already visible. */}
+            {filtered.length > visible.length && (
+              <div className="flex justify-center mt-7">
+                <button onClick={() => { setVisibleCount(c => c + (isMobile ? 6 : 18)); show('Loaded more!') }}
+                  className="px-7 py-2.5 border border-[#3f3f46] rounded-xl bg-transparent text-[#a1a1aa] cursor-pointer text-sm hover:border-[#a855f7] hover:text-[#c084fc]">View More</button>
+              </div>
+            )}
+          </>
+        )
+      })()}
     </div>
   )
 }
