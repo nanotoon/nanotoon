@@ -178,16 +178,11 @@ export default function EditSeriesPage() {
       } catch (e: any) { show('Thumbnail upload failed: ' + e.message); setSaving(false); return }
     }
     const newDirection = readingMode === 'horizontal' ? readingDirection : 'ltr'
-    // FIX (ranking anti-abuse): do NOT bump updated_at on series edits.
-    // Latest-Updates rank is now driven exclusively by *genuinely new*
-    // chapters (chapter_number > series.max_chapter_added, enforced in
-    // addChapter below). Editing title / description / genres / thumbnail /
-    // reading mode / format / per-chapter title|rating|pages must all leave
-    // updated_at alone. See lib/supabase/ranking-schema.sql for the full rule.
     const { error } = await (createWriteClient() as any).from('series').update({
       title, description: desc, format, genres: Array.from(genres),
       thumbnail_url: thumbnailUrl, reading_mode: readingMode,
       reading_direction: newDirection,
+      updated_at: new Date().toISOString()
     }).eq('id', series.id)
     if (error) show('Save failed: ' + error.message)
     else {
@@ -435,31 +430,12 @@ export default function EditSeriesPage() {
     // FIX: adding a chapter means the series now has 2+ chapters, so auto-switch
     // format to "Series" (was possibly "One Shot" from single-chapter state).
     const updatedChapters = [...chapters, ch].sort((a, b) => a.chapter_number - b.chapter_number)
-
-    // FIX (ranking anti-abuse): only bump updated_at + high-water mark when
-    // the new chapter's number is strictly greater than any chapter_number
-    // this series has ever had. Re-uploading a previously-deleted chapter
-    // number (same or lower than max_chapter_added) must NOT pop the series
-    // back to the top of Latest Updates. The format auto-switch to "Series"
-    // is independent of ranking and always applies when we cross to 2+
-    // chapters. See lib/supabase/ranking-schema.sql for the full rule.
-    const prevMax = (series.max_chapter_added as number | null | undefined) ?? 0
-    const isNewMax = newChNumber > prevMax
-    const needsFormatSwitch = updatedChapters.length >= 2 && series.format !== 'Series'
-    const seriesPatch: any = {}
-    if (needsFormatSwitch) seriesPatch.format = 'Series'
-    if (isNewMax) {
-      seriesPatch.updated_at = new Date().toISOString()
-      seriesPatch.max_chapter_added = newChNumber
-    }
-    if (Object.keys(seriesPatch).length > 0) {
-      await (createWriteClient() as any).from('series').update(seriesPatch).eq('id', series.id)
-    }
-    if (needsFormatSwitch) {
-      setSeries((s: any) => ({ ...s, format: 'Series', ...(isNewMax ? { max_chapter_added: newChNumber } : {}) }))
+    if (updatedChapters.length >= 2 && series.format !== 'Series') {
+      await (createWriteClient() as any).from('series').update({ format: 'Series', updated_at: new Date().toISOString() }).eq('id', series.id)
+      setSeries((s: any) => ({ ...s, format: 'Series' }))
       setFormat('Series')
-    } else if (isNewMax) {
-      setSeries((s: any) => ({ ...s, max_chapter_added: newChNumber }))
+    } else {
+      await (createWriteClient() as any).from('series').update({ updated_at: new Date().toISOString() }).eq('id', series.id)
     }
 
     // FIX: notify all followers of the author that a new chapter is out

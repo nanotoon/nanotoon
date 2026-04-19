@@ -116,11 +116,6 @@ export async function updateSeries(seriesId: string, formData: FormData) {
   const genres = genresRaw ? genresRaw.split(",").map((g) => g.trim()) : [];
   const thumbnailUrl = formData.get("thumbnail_url") as string;
 
-  // FIX (ranking anti-abuse): do NOT bump updated_at on metadata edits.
-  // Latest-Updates rank is now driven exclusively by *genuinely new* chapters
-  // (i.e. a chapter_number strictly greater than series.max_chapter_added),
-  // so title/description/genre/thumbnail/format edits must leave updated_at
-  // alone. See lib/supabase/ranking-schema.sql for the full rule.
   const { error } = await supabase
     .from("series")
     .update({
@@ -129,6 +124,7 @@ export async function updateSeries(seriesId: string, formData: FormData) {
       format,
       genres,
       thumbnail_url: thumbnailUrl || null,
+      updated_at: new Date().toISOString(),
     })
     .eq("id", seriesId)
     .eq("author_id", user.id); // RLS backup: only author can update

@@ -209,13 +209,9 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
       const slug = seriesTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') + '-' + Date.now().toString(36)
       // FIX: if publishing with only 1 page, force format to "One Shot" regardless of picked value.
       const autoFormat = files.length === 1 ? 'One Shot' : format!
-      // FIX (ranking anti-abuse): seed max_chapter_added to the first chapter
-      // number being inserted so the high-water mark is correct from day one.
-      // See lib/supabase/ranking-schema.sql for the full rule.
       const { data: ns, error: sErr } = await (createWriteClient() as any).from('series').insert({
         title: seriesTitle, slug, description: desc || null, format: autoFormat, genres: Array.from(genres),
         thumbnail_url: thumbnailUrl, author_id: getAuthUserId()!, reading_mode: readingMode, reading_direction: readingMode === 'horizontal' ? readingDirection : 'ltr',
-        max_chapter_added: chapterNumber,
       }).select().single()
       if (sErr) throw new Error(sErr.message || 'Series creation failed')
       seriesId = ns.id
@@ -239,27 +235,7 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
       page_urls: pageUrls.length > 0 ? pageUrls : null, reading_mode: readingMode, reading_direction: readingMode === 'horizontal' ? readingDirection : 'ltr',
     })
     if (chErr) throw new Error(chErr.message || 'Chapter save failed')
-    // FIX (ranking anti-abuse): only bump updated_at (and advance the high-
-    // water mark) when this chapter's number is strictly greater than any
-    // chapter_number this series has ever had. Re-uploading a previously-
-    // deleted chapter number must NOT pop the series back to the top of
-    // Latest Updates. For mode === 'new' we already seeded max_chapter_added
-    // on the series insert above, so here we only handle mode === 'existing'
-    // — but the write is also safe (and a no-op) for 'new' since we just
-    // created the row with max_chapter_added = chapterNumber. We always
-    // bump updated_at for 'new' (first-ever upload is always a new max).
-    if (mode === 'new') {
-      await (createWriteClient() as any).from('series').update({ updated_at: new Date().toISOString() }).eq('id', seriesId)
-    } else {
-      const { data: sRow } = await anonDb.from('series').select('max_chapter_added').eq('id', seriesId!).single() as { data: any }
-      const prevMax = (sRow?.max_chapter_added as number | null | undefined) ?? 0
-      if (chapterNumber > prevMax) {
-        await (createWriteClient() as any).from('series').update({
-          updated_at: new Date().toISOString(),
-          max_chapter_added: chapterNumber,
-        }).eq('id', seriesId)
-      }
-    }
+    await (createWriteClient() as any).from('series').update({ updated_at: new Date().toISOString() }).eq('id', seriesId)
 
     // FIX: notify all followers of the author that a new chapter is out
     try {

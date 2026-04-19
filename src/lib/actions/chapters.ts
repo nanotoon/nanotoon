@@ -57,11 +57,10 @@ export async function createChapter(formData: FormData) {
     ? pageUrlsRaw.split(",").map((u) => u.trim())
     : [];
 
-  // Verify user owns this series AND fetch current high-water mark so we
-  // know whether this chapter should bump the Latest-Updates rank.
+  // Verify user owns this series
   const { data: series } = await supabase
     .from("series")
-    .select("author_id, max_chapter_added")
+    .select("author_id")
     .eq("id", seriesId)
     .single();
 
@@ -83,22 +82,11 @@ export async function createChapter(formData: FormData) {
 
   if (error) return { data: null, error: error.message };
 
-  // FIX (ranking anti-abuse): only bump updated_at (and the high-water mark)
-  // when the new chapter's number is strictly greater than any
-  // chapter_number this series has ever had. Re-uploading a previously-
-  // deleted chapter number (same or lower than max_chapter_added) must NOT
-  // pop the series back to the top of Latest Updates. See
-  // lib/supabase/ranking-schema.sql for the full rule.
-  const prevMax = series.max_chapter_added ?? 0;
-  if (chapterNumber > prevMax) {
-    await supabase
-      .from("series")
-      .update({
-        updated_at: new Date().toISOString(),
-        max_chapter_added: chapterNumber,
-      })
-      .eq("id", seriesId);
-  }
+  // Update series updated_at
+  await supabase
+    .from("series")
+    .update({ updated_at: new Date().toISOString() })
+    .eq("id", seriesId);
 
   revalidatePath(`/series`);
   return { data, error: null };
