@@ -318,7 +318,7 @@ export function UploadModal({ onClose, onToast }: { onClose: () => void; onToast
                 {thumbPreview && <button type="button" onClick={() => { setThumbFile(null); setThumbPreview(null) }} className="px-3 py-1.5 border border-[#3f3f46] rounded-lg bg-transparent text-[#71717a] cursor-pointer text-xs hover:text-red-400">Remove</button>}</div>
                 <input ref={thumbRef} type="file" className="hidden" accept=".jpg,.jpeg,.png,.webp" onChange={handleThumb} /></div></div>
             </div>)}
-            <div><label className="block text-xs text-[#71717a] mb-1">Chapter Title *</label><input value={chapterTitle} onChange={e => setChapterTitle(e.target.value)} placeholder="Chapter 1" className="w-full bg-[#27272a] border border-[#3f3f46] rounded-lg p-2 text-[#e4e4e7] text-sm outline-none focus:border-[#a855f7]" /></div>
+            <div><label className="block text-xs text-[#71717a] mb-1">Chapter Title *</label><input value={chapterTitle} onChange={e => setChapterTitle(e.target.value)} placeholder="Chapter" className="w-full bg-[#27272a] border border-[#3f3f46] rounded-lg p-2 text-[#e4e4e7] text-sm outline-none focus:border-[#a855f7]" /></div>
             <div><label className="block text-xs text-[#71717a] mb-1">Chapter #</label><input type="number" value={chapterNumber} onChange={e => setChapterNumber(parseInt(e.target.value) || 1)} min={1} className="w-20 bg-[#27272a] border border-[#3f3f46] rounded-lg p-2 text-[#e4e4e7] text-sm outline-none focus:border-[#a855f7]" /></div>
             {mode === 'new' && (<div>
               <div className="flex items-center gap-1 mb-1.5"><label className="text-xs text-[#71717a]">Format *</label><OneShotTip mobile={isMobile} /></div>

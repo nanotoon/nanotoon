@@ -341,10 +341,26 @@ export default function EditSeriesPage() {
     if (swapIdx < 0 || swapIdx >= chapters.length) return
     const chA = chapters[idx]
     const chB = chapters[swapIdx]
-    await Promise.all([
-      (createWriteClient() as any).from('chapters').update({ chapter_number: chB.chapter_number }).eq('id', chA.id),
-      (createWriteClient() as any).from('chapters').update({ chapter_number: chA.chapter_number }).eq('id', chB.id),
-    ])
+    // FIX: the previous implementation fired both UPDATEs in parallel with
+    // Promise.all, which fails under the UNIQUE(series_id, chapter_number)
+    // constraint — you can't set chA.chapter_number = chB.chapter_number while
+    // chB still holds that number. The first update would error, the error
+    // was never checked, and a reload showed the unchanged order.
+    // Fix: park chA at a temp (negative) number first so the slot is free,
+    // then move chB into chA's old slot, then move chA into chB's old slot.
+    // Errors are surfaced via the toast so silent failures don't happen again.
+    const wc = createWriteClient() as any
+    const tempChapterNumber = -(chA.chapter_number) - 1000000
+    const { error: e1 } = await wc.from('chapters').update({ chapter_number: tempChapterNumber }).eq('id', chA.id)
+    if (e1) { show('Move failed: ' + e1.message); return }
+    const { error: e2 } = await wc.from('chapters').update({ chapter_number: chA.chapter_number }).eq('id', chB.id)
+    if (e2) {
+      // best-effort rollback of chA so we don't leave it parked at the temp value
+      await wc.from('chapters').update({ chapter_number: chA.chapter_number }).eq('id', chA.id)
+      show('Move failed: ' + e2.message); return
+    }
+    const { error: e3 } = await wc.from('chapters').update({ chapter_number: chB.chapter_number }).eq('id', chA.id)
+    if (e3) { show('Move failed: ' + e3.message); return }
     const updated = [...chapters]
     const tempNum = updated[idx].chapter_number
     updated[idx] = { ...updated[idx], chapter_number: updated[swapIdx].chapter_number }
