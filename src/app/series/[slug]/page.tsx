@@ -126,6 +126,13 @@ export default function ReaderPage() {
   const slug = params.slug as string
   const anonDb = useMemo(() => createAnonClient(), [])
   const viewIncremented = useRef(false)
+  // FIX (tab-switch jumps to latest chapter): guards the "default to latest
+  // chapter" behavior so it only runs on the first load for a given slug.
+  // Without this, any re-run of the load effect (e.g. caused by Supabase's
+  // TOKEN_REFRESHED event firing when the user switches tabs and returns,
+  // which replaces the `user` object reference) would snap them back to the
+  // newest chapter mid-read.
+  const initialChapterSet = useRef<string | null>(null)
 
   // Query params for jumping to a specific comment from a notification
   const targetCommentId = searchParams.get('comment') || searchParams.get('seriesComment')
@@ -224,7 +231,17 @@ export default function ReaderPage() {
 
         const chs = chsRes.data as any[] | null
         setChapters(chs ?? [])
-        if (chs?.length) { setCurrentCh(chs[chs.length - 1].chapter_number); setChapterViews(chs[chs.length - 1].views ?? 0) }
+        // FIX (tab-switch jumps to latest chapter): only set the default chapter
+        // on the FIRST load for this slug. If this effect re-runs for any reason
+        // (e.g. TOKEN_REFRESHED swapping the `user` object after returning from
+        // another browser tab), we must not stomp the chapter the user is
+        // actually reading. chapterViews is also only seeded on first load — the
+        // chapter-switch effect below keeps it accurate afterwards.
+        if (chs?.length && initialChapterSet.current !== slug) {
+          initialChapterSet.current = slug
+          setCurrentCh(chs[chs.length - 1].chapter_number)
+          setChapterViews(chs[chs.length - 1].views ?? 0)
+        }
         const seriesCommentsRaw = (scRes.data ?? []) as any[]
         setSeriesComments(seriesCommentsRaw)
         // FIX (comment likes persist for everyone): the `comments.likes_count`
@@ -274,7 +291,14 @@ export default function ReaderPage() {
     }
     load()
     return () => { c = true }
-  }, [slug, user, anonDb])
+    // FIX (tab-switch jumps to latest chapter): depend on user?.id, not the
+    // `user` object itself. Supabase fires TOKEN_REFRESHED when the user
+    // returns to the tab after the access token has expired, and our
+    // AuthContext responds by calling setUser(newSessionUser) with a fresh
+    // object reference — same id, different identity. A dep on `user` would
+    // re-run this whole load effect on every tab return. Keying on the id
+    // string instead means we only re-run on actual sign-in/sign-out.
+  }, [slug, user?.id, anonDb]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!series || !chapters.length) return
