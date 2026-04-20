@@ -225,7 +225,22 @@ export default function ReaderPage() {
         const chs = chsRes.data as any[] | null
         setChapters(chs ?? [])
         if (chs?.length) { setCurrentCh(chs[chs.length - 1].chapter_number); setChapterViews(chs[chs.length - 1].views ?? 0) }
-        setSeriesComments((scRes.data ?? []) as any[])
+        const seriesCommentsRaw = (scRes.data ?? []) as any[]
+        setSeriesComments(seriesCommentsRaw)
+        // FIX (comment likes persist for everyone): the `comments.likes_count`
+        // column is a stale cached counter that was never kept in sync (the
+        // client-side toggle only wrote to `comment_likes`). Recompute the
+        // real count from `comment_likes` grouped by comment_id so the display
+        // is correct for every viewer, not just whoever last liked something.
+        if (seriesCommentsRaw.length) {
+          const ids = seriesCommentsRaw.map(x => x.id)
+          anonDb.from('comment_likes').select('comment_id').in('comment_id', ids).then(({ data }: any) => {
+            if (c) return
+            const counts = new Map<string, number>()
+            for (const row of (data ?? []) as any[]) counts.set(row.comment_id, (counts.get(row.comment_id) ?? 0) + 1)
+            setSeriesComments(prev => prev.map(x => ({ ...x, likes_count: counts.get(x.id) ?? 0 })))
+          })
+        }
 
         if (user && uid) {
           setLiked(!!lkRes.data)
@@ -267,7 +282,21 @@ export default function ReaderPage() {
     if (!ch) return
     setChapterViews(ch.views ?? 0)
     anonDb.from('comments').select('*, profiles!comments_user_id_fkey(display_name, handle, avatar_url)').eq('chapter_id', ch.id).order('created_at', { ascending: false })
-      .then(({ data }: any) => setComments(data ?? []))
+      .then(({ data }: any) => {
+        const rows = (data ?? []) as any[]
+        setComments(rows)
+        // FIX (comment likes persist for everyone): same reason as the series
+        // comments path above — the cached `likes_count` column is stale, so
+        // recompute from the `comment_likes` table for every viewer.
+        if (rows.length) {
+          const ids = rows.map(x => x.id)
+          anonDb.from('comment_likes').select('comment_id').in('comment_id', ids).then(({ data: likeRows }: any) => {
+            const counts = new Map<string, number>()
+            for (const row of (likeRows ?? []) as any[]) counts.set(row.comment_id, (counts.get(row.comment_id) ?? 0) + 1)
+            setComments(prev => prev.map(x => ({ ...x, likes_count: counts.get(x.id) ?? 0 })))
+          })
+        }
+      })
     // FIX: chapter views bumped via /api/views (service role, bypasses RLS).
     // Same fix as series views above — before, RLS blocked everyone except the
     // admin from incrementing chapter.views, so chapter view counts never moved
@@ -524,10 +553,19 @@ export default function ReaderPage() {
     const uid = getAuthUserId()
     if (!uid) { show('Sign in to like!'); return }
     const isLiked = likedComments.has(commentId)
+    // FIX (comment likes persist for everyone): previously we only kept an
+    // optimistic client-side count and never reconciled with the DB, so after
+    // refresh the heart stayed red (comment_likes row exists) but the count
+    // reverted to whatever the stale `comments.likes_count` column held
+    // (usually 0). We now mirror the series `toggleLike` pattern: do an
+    // optimistic bump for UX, then re-count from `comment_likes` with
+    // `count: 'exact'` and overwrite with the real value. This also means the
+    // count is correct regardless of who liked — we never depend on a cached
+    // counter column that RLS won't let other users update.
     const newCount = isLiked ? Math.max(0, currentCount - 1) : currentCount + 1
     setLikedComments(prev => { const n = new Set(prev); if (isLiked) n.delete(commentId); else n.add(commentId); return n })
-    const updater = (prev: any[]) => prev.map(x => x.id === commentId ? { ...x, likes_count: newCount } : x)
-    setComments(updater); setSeriesComments(updater)
+    const optimisticUpdater = (prev: any[]) => prev.map(x => x.id === commentId ? { ...x, likes_count: newCount } : x)
+    setComments(optimisticUpdater); setSeriesComments(optimisticUpdater)
     if (isLiked) {
       await (createWriteClient() as any).from('comment_likes').delete().eq('user_id', uid).eq('comment_id', commentId)
     } else {
@@ -540,6 +578,12 @@ export default function ReaderPage() {
           message: `liked your comment on "${series.title}"`, series_id: series.id, comment_id: commentId,
         }).then(() => {}, () => {})
       }
+    }
+    // Reconcile with the real count from comment_likes (source of truth).
+    const { count } = await anonDb.from('comment_likes').select('*', { count: 'exact', head: true }).eq('comment_id', commentId) as any
+    if (count != null) {
+      const reconcileUpdater = (prev: any[]) => prev.map(x => x.id === commentId ? { ...x, likes_count: count } : x)
+      setComments(reconcileUpdater); setSeriesComments(reconcileUpdater)
     }
   }
 
